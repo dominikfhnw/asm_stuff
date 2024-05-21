@@ -1,16 +1,45 @@
-#CC=gcc -Os -fno-plt -no-pie -ffunction-sections -fdata-sections -Wl,--gc-sections -fno-exceptions -Wl,-z,norelro,-z,execstack,--build-id=none -Wl,-To4
+CC   = clang
+CC   = gcc
+LD   = ld
+LD   = $(CC)
+BITS = 32
+SRC  = hello.c
+
+OBJ=$(SRC:.c=.o)
+FILES=$(OBJ) -o strip3
 
 LDFLAGS0=--gc-sections --print-gc-sections -z norelro -z noseparate-code
-LDFLAGS=--build-id=none --orphan-handling=warn -To4
+LDFLAGS=$(LDFLAGS0) --build-id=none --orphan-handling=warn --script=o4 --print-map
+#CLDFLAGS=$(shell echo $(LDFLAGS) | sed -E 's/--/-Wl,&/g;s/-z /-Wl,-z,/g')
 
-#CFLAGS0=-ffunction-sections -fdata-sections
+ifeq ($(LD),$(CC))
+P := -Wl,--
+Q := -Wl,-z,
+LDFLAGS := $(subst --,$P,$(LDFLAGS))
+LDFLAGS := $(subst -z ,$Q,$(LDFLAGS))
+LEXTRA := -m$(BITS) -no-pie -nostartfiles
+else
+
+DL=-dynamic-linker
+ifeq ($(BITS),64)
+FORMAT=elf_x86_64
+DL+=/lib64/ld-linux-x86-64.so.2
+else
+FORMAT=elf_i386
+DL+=/lib/ld-linux.so.2
+endif
+ifeq ($(BITS),x32)
+FORMAT=elf32_x86_64
+DL+=/libx32/ld-linux-x32.so.2
+endif
+LIBS=-lgcc -lgcc_s -lc
+LEXTRA=-m$(FORMAT) $(DL) $(LIBDIR) --as-needed --hash-style=gnu
+
+endif
+
+CFLAGS0=-ffunction-sections -fdata-sections
 CFLAGS0+=-falign-functions=1 -falign-loops=1 -fomit-frame-pointer
-#CFLAGS=-fno-plt -no-pie -Wl,--build-id=none -Wl,-To4 -Wl,--orphan-handling=discard
-#CFLAGS=-fno-plt -no-pie -Wl,--build-id=none -Wl,--orphan-handling=warn -Wl,-To4
-CFLAGS=$(CFLAGS0) -fno-plt -no-pie
-
-CC = clang
-CC = gcc
+CFLAGS=$(CFLAGS0) -fno-plt
 
 ifeq ($(CC),gcc)
 EXTRA=-Os
@@ -19,24 +48,23 @@ ifeq ($(CC),clang)
 EXTRA=-Oz
 endif
 
-LIB=$(shell $(CC) -m32 -print-search-dirs | sed -n '/^libraries: =/{s///;s/:/\n/g;p}' | xargs readlink -e | sort -u | sed 's/^/-L /')
-
-SRC=hello.c
-OBJ=$(SRC:.c=.o)
+LIBDIR=$(shell $(CC) -m$(BITS) -print-search-dirs | sed -n '/^libraries: =/{s///;s/:/\n/g;p}' | xargs readlink -e | sort -u | sed 's/^/-L /')
 
 compile: $(SRC)
-	@#$(CC) -dM -DNOSTART -nostartfiles -E hello.c
-	$(CC) $(EXTRA) $(CFLAGS) -m32 -DNOSTART -nostartfiles -c $^
-	@#strace -s 1024 -fe trace=execve $(CC) -m32 -DNOSTART -nostartfiles hello.c -o foo
-	@#$(LD) $(LIB) -m elf_i386 -as-needed -lgcc -lc -lgcc_s -dynamic-linker /lib/ld-linux.so.2 $(LDFLAGS0) $(LDFLAGS) hello.o -o strip3
-	ld $(LDFLAGS0) $(LDFLAGS) -m elf_i386 --hash-style=gnu --as-needed -dynamic-linker /lib/ld-linux.so.2 $(LIB) $(OBJ) -lgcc -lgcc_s -lc -o strip3
+	@#echo LDFLAGS $(LDFLAGS)
+	@#echo LDFLAGS $(CLDFLAGS)
+	$(CC) $(EXTRA) $(CFLAGS) -m$(BITS) -DNOSTART -c $^
+	@#objcopy -v --gap-fill 0x41 --set-section-alignment '.symtab'=1 hello.o hello2.o && rm hello.o && mv hello2.o hello.o
+	#$(LD) -m$(BITS) -no-pie -nostartfiles $(LDFLAGS) $(FILES) $(LIBS) > map
+	$(LD) $(LEXTRA) $(LDFLAGS) $(FILES) $(LIBS) > map
+	#$(LD) -m$(FORMAT) $(DL) $(LIBDIR) --as-needed --hash-style=gnu $(LDFLAGS) $(FILES) $(LIBS) > map
 	@ls -l strip3
 
 strip: compile
 	@strip -R .gnu.hash -R .gnu.version -R .got strip3 -o strip3b
 	@sstrip -z strip3b
 	@ls -l strip3b
-	@./strip3b
+	@./strip3b || echo "return $$?"
 
 
 .PHONY: old
@@ -49,11 +77,11 @@ old:
 
 .PHONY: static
 static: hello.c
-	diet -Os gcc $(CFLAGS0) $(CFLAGS) -Wl,-Tstatic hello.c -o strip3 -Wl,-M > map
+	diet -Os gcc $(CFLAGS) -Wl,-Tstatic hello.c -o strip3 -Wl,-M > map
 	@ls -l strip3
-	#@strip -R .gnu.hash -R .gnu.version -R .got strip3
-	#@sstrip -z strip3
-	#@ls -l strip3
+	@strip -R .gnu.hash -R .gnu.version -R .got strip3 -o strip3b
+	@sstrip -z strip3b
+	@ls -l strip3b
 
 debug: hello.c
 	$(CC) -g -DNOSTART -nostartfiles hello.c -o strip3 -Wl,-M > map
