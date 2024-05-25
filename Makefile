@@ -14,11 +14,10 @@ LDFLAGS0=--gc-sections --print-gc-sections -z norelro -z noseparate-code
 LDFLAGS=$(LDFLAGS0) --build-id=none --orphan-handling=warn --script=o4 --print-map
 LDFLAGS+=-z nodlopen -z nocopyreloc
 
-CFLAGS0=-ffunction-sections -fdata-sections
-CFLAGS0+=-falign-functions=1 -falign-loops=1 -fomit-frame-pointer
-CFLAGS=$(CFLAGS0) -fno-asynchronous-unwind-tables -ffat-lto-objects -fno-stack-clash-protection -fno-stack-protector -fcf-protection=none -fno-pie -fno-PIE -fno-pic -fno-PIC -fno-plt
+#CFLAGS0=-ffunction-sections -fdata-sections
+#CFLAGS0+=-falign-functions=1 -falign-loops=1 -fomit-frame-pointer
+CFLAGS=$(CFLAGS0) -fwhole-program -fno-asynchronous-unwind-tables -ffat-lto-objects -fno-stack-clash-protection -fno-stack-protector -fcf-protection=none -fno-pie -fno-PIE -fno-pic -fno-PIC -fno-plt
 
-LIBDIR=$(shell $(CC) -m$(BITS) -print-search-dirs | sed -n '/^libraries: =/{s///;s/:/\n/g;p}' | xargs readlink -e | sort -u | sed 's/^/-L /')
 
 ifeq ($(LTO),1)
 LD = $(CC)
@@ -32,6 +31,8 @@ LDFLAGS := $(subst --,$P,$(LDFLAGS))
 LDFLAGS := $(subst -z ,$Q,$(LDFLAGS))
 LEXTRA += -m$(BITS) -no-pie -nostartfiles
 else
+
+LIBDIR=$(shell $(CC) -m$(BITS) -print-search-dirs | sed -n '/^libraries: =/{s///;s/:/\n/g;p}' | xargs readlink -e | sort -u | sed 's/^/-L /')
 
 DL=-dynamic-linker
 ifeq ($(BITS),64)
@@ -60,7 +61,6 @@ endif
 compile: $(SRC)
 	$(CC) $(EXTRA) $(CFLAGS) -m$(BITS) -DNOSTART -flto -c $^
 	$(CC) $(EXTRA) $(CFLAGS) -m$(BITS) -DNOSTART -S -fverbose-asm $^
-	@#objcopy -v --gap-fill 0x41 --set-section-alignment '.symtab'=1 hello.o hello2.o && rm hello.o && mv hello2.o hello.o
 	$(LD) $(LEXTRA) $(LDFLAGS) $(FILES) $(LIBS) > map
 	@ls -l $(OUT)
 
