@@ -11,6 +11,11 @@ INTERP = 0
 OBJ=$(SRC:.c=.o)
 FILES=$(OBJ) -o $(OUT)
 
+ifeq ($(LTO),1)
+LD = $(CC)
+LEXTRA = -flto
+endif
+
 ifeq ($(INTERP),0)
 LD=ld
 SCRIPT=nointerp
@@ -18,18 +23,16 @@ else
 SCRIPT=o4
 endif
 
-ifeq ($(LTO),1)
-LD = $(CC)
-LEXTRA = -flto
-endif
-
 LDFLAGS0=--gc-sections --print-gc-sections -z norelro -z noseparate-code
 LDFLAGS=$(LDFLAGS0) --build-id=none --orphan-handling=warn --script=$(SCRIPT) --print-map
-LDFLAGS+=-z nodlopen -z nocopyreloc
+LDFLAGS+=-z nocopyreloc
 
 #CFLAGS0=-ffunction-sections -fdata-sections
 #CFLAGS0+=-falign-functions=1 -falign-loops=1 -fomit-frame-pointer
-CFLAGS=$(CFLAGS0) -fno-asynchronous-unwind-tables -fno-stack-clash-protection -fno-stack-protector -fcf-protection=none -fno-pie -fno-PIE -fno-pic -fno-PIC -fno-plt
+#CFLAGS0+=-Wpedantic -Wall -Wextra
+#CFLAGS0+=-ffast-math -fno-exceptions -fomit-frame-pointer -funsafe-math-optimizations -fvisibility=hidden -march=pentium4
+CFLAGS=$(CFLAGS0) -fno-asynchronous-unwind-tables -fno-stack-clash-protection -fno-stack-protector -fcf-protection=none -fno-pie -fno-PIE -fno-pic -fno-PIC -fno-plt -mpreferred-stack-boundary=$(STACK)
+WARNINGS=-Wpedantic -Wall -Wextra -Wno-old-style-declaration
 
 ifeq ($(LD),$(CC))
 P := -Wl,--
@@ -44,16 +47,19 @@ LIBDIR=$(shell $(CC) -m$(BITS) -print-search-dirs | sed -n '/^libraries: =/{s///
 ifeq ($(BITS),64)
 FORMAT=elf_x86_64
 DL=/lib64/ld-linux-x86-64.so.2
+STACK=3
 else
 FORMAT=elf_i386
 DL=/lib/ld-linux.so.2
+STACK=2
 endif
 ifeq ($(BITS),x32)
 FORMAT=elf32_x86_64
 DL=/libx32/ld-linux-x32.so.2
+STACK=3
 endif
 LIBS=-lgcc -lgcc_s -lc
-LEXTRA=-m$(FORMAT) $(DL) $(LIBDIR) --as-needed --hash-style=gnu
+LEXTRA=-m$(FORMAT) $(DL) $(LIBDIR) --as-needed --hash-style=sysv
 
 ifeq ($(INTERP),0)
 LOAD:=$(DL)
@@ -68,18 +74,18 @@ ifeq ($(CC),gcc)
 EXTRA=-Os -flto -fwhole-program -ffat-lto-objects
 endif
 ifeq ($(CC),clang)
-EXTRA=-Oz
+EXTRA=-Oz -Wunknown-warning-option
 endif
 
 
 compile: $(SRC)
-	$(CC) $(EXTRA) $(CFLAGS) -m$(BITS) -DNOSTART -c $^
-	$(CC) $(EXTRA) $(CFLAGS) -m$(BITS) -DNOSTART -S -fverbose-asm $^
+	$(CC) $(EXTRA) $(CFLAGS) -m$(BITS) $(WARNINGS) -DNOSTART -c $^
+	$(CC) $(EXTRA) $(CFLAGS) -m$(BITS) -fno-lto -DNOSTART -S -fverbose-asm $^
 	$(LD) $(LEXTRA) $(LDFLAGS) $(FILES) $(LIBS) > map
 	@ls -l $(OUT)
 
 strip: compile
-	@strip -R .gnu.hash -R .gnu.version -R .got -R .rel.plt -R .rel.got $(OUT) -o $(OUT)b
+	@strip -R .hash -R .gnu.hash -R .gnu.version -R .got -R .rel.plt -R .rel.got $(OUT) -o $(OUT)b
 	@sstrip -z $(OUT)b
 	@ls -l $(OUT)b
 	$(LOAD) ./$(OUT)b || echo "return $$?"
