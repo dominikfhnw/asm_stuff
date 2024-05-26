@@ -1,9 +1,21 @@
 #ifdef NOSTART
-#include <unistd.h>
 #define main static fakemain
 
+#define DYN
+#define NOSTACK
+//#define DEBUG
+
+#include "dl.h"
+// predeclaration
 int main();
-__attribute__((externally_visible, section(".text.startup._start"), noreturn, used, naked )) void _start(){
+
+#if defined(__GNUC__) && !defined(__llvm__) && !defined(__INTEL_COMPILER)
+#define REALLY_GCC
+#define GCCATTR externally_visible, naked
+#else
+#define GCCATTR
+#endif
+__attribute__((noreturn, used, GCCATTR )) void _start(){
 	// https://sourceware.org/git/?p=glibc.git;a=blob;f=sysdeps/x86_64/elf/start.S;h=3c2caf9d00a0396ef2b74adb648f76c6c74ff65f;hb=cvs/glibc-2_9-branch
 	// push stack position on stack
 	#ifndef NOSTACK
@@ -15,7 +27,14 @@ __attribute__((externally_visible, section(".text.startup._start"), noreturn, us
 	#error unsupported architecture
 	#endif
 	#endif
+
+	IMPORT(int, puts, const char *);
+	puts("exit");
+	//IMPORT(int, printf, const char *, ...);
+	//printf("hello world %d\n", dl);
+
 	int ret = fakemain();
+	IMPORT(void, _exit, int);
 	_exit(ret);
 	__builtin_unreachable();
 }
