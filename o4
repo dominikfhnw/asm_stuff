@@ -27,8 +27,6 @@ SECTIONS
   .rodata1        : { *(.rodata1) }
   .dynstr         : { *(.dynstr) }
   .dynsym         : { *(.dynsym) }
-  .gnu.version_d  : { *(.gnu.version_d) }
-  .gnu.version_r  : { *(.gnu.version_r) }
   .rela.init      : { *(.rela.init) }
   .rela.text      : { *(.rela.text .rela.text.* .rela.gnu.linkonce.t.*) }
   .rela.fini      : { *(.rela.fini) }
@@ -135,7 +133,6 @@ SECTIONS
   }
   .jcr            : { KEEP (*(.jcr)) }
   .data.rel.ro : { *(.data.rel.ro.local* .gnu.linkonce.d.rel.ro.local.*) *(.data.rel.ro .data.rel.ro.* .gnu.linkonce.d.rel.ro.*) }
-  .got.plt        : { *(.got.plt) *(.igot.plt) } :text
   .data           :
   {
     *(.data .data.* .gnu.linkonce.d.*)
@@ -219,9 +216,12 @@ SECTIONS
   .debug_sup      0 : { *(.debug_sup) }
   .gnu.attributes 0 : { KEEP (*(.gnu.attributes)) }
   .dynamic        : { *(.dynamic) } :text :dynamic
+  .got.plt        : { *(.got.plt) *(.igot.plt) } :text
   .gnu.hash       : { *(.gnu.hash) } :text
   .hash           : { *(.hash) } :text
   .gnu.version    : { *(.gnu.version) }
+  .gnu.version_d  : { *(.gnu.version_d) }
+  .gnu.version_r  : { *(.gnu.version_r) }
   .got            : { *(.got) *(.igot) } :text
   /DISCARD/ : { *(.note.*) *(.gnu_debuglink) *(.gnu.lto_*) *(.comment) *(.eh_frame_hdr) *(.eh_frame) *(.gnu.hash)
 	*(.rel.bss)
