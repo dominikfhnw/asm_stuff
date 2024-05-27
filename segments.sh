@@ -1,6 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
+VERBOSE=
 FILE=${1-"/usr/bin/id"}
 f=$(basename "$FILE")
 mkdir -p "$f-segments"
@@ -16,11 +17,14 @@ while read -r name offset len perm align; do
 		if [ $m -lt $offset ]; then
 			gap=$(( offset - m ))
 			#echo -ne "\t- gap: $gap ($m $offset)"
-			echo -e "GAP\t- $m\t- $gap ($m $offset)"
+			[ "$VERBOSE" ] && echo -e "GAP\t- $m\t- $gap ($m $offset)"
 		fi
 	fi
-	echo -e "$name\t- $offset\t- $len\t- $perm\t- $a2"
-	dd if="$FILE" bs=1 skip=$offset count=$len of="$f-segments/$i-$name-$perm" 2>/dev/null
+	[ "$VERBOSE" ] && echo -e "$name\t- $offset\t- $len\t- $perm\t- $a2"
+	out="$f-segments/$i-$name-$perm"
+	dd if="$FILE" bs=1 skip=$offset count=$len of="$out" status=none
+	echo "Content of header $name:"
+	hexdump -vC "$out"
 	(( ++i ))
 	loff=$offset
 	llen=$len
