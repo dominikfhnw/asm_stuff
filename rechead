@@ -2,9 +2,9 @@ o=$(basename "$0" .c)
 gcc "$0" -o "$o"
 out=cust
 ./"$o" > "$out"
-ls -l "$OUT" "$out"
-cmp "$OUT" "$out"
 make dostrip OUT="$out"
+cmp "$OUT"c "$out"c
+ls -l "$OUT"c "$out"c
 exit
 #endif
 #include <stdio.h>
