@@ -7,6 +7,7 @@ BITS = 32
 SRC  = hello.c
 OUT  = strip3
 INTERP = 0
+PROG = -DNOSTART -DDYN -DNOSTACK
 
 OBJ=$(SRC:.c=.o)
 FILES=$(OBJ) -o $(OUT)
@@ -77,18 +78,29 @@ ifeq ($(CC),clang)
 EXTRA=-Oz -Wunknown-warning-option
 endif
 
+REC = rec.c
 
 compile: $(SRC)
-	$(CC) $(EXTRA) $(CFLAGS) -m$(BITS) $(WARNINGS) -DNOSTART -c $^
+	$(CC) $(EXTRA) $(CFLAGS) -m$(BITS) $(WARNINGS) $(PROG) -c $^
 	$(CC) $(EXTRA) $(CFLAGS) -m$(BITS) -fno-lto -DNOSTART -S -fverbose-asm $^
 	$(LD) $(LEXTRA) $(LDFLAGS) $(FILES) $(LIBS) > map
+	@echo "#if 0" > $(REC)
+	@echo "OUT=$(OUT)" >> $(REC)
+	@echo "LOAD=$(LOAD)" >> $(REC)
+	@cat rechead >> $(REC)
+	elftoc -e $(OUT) >> $(REC)
+	@echo "int main(void) { return fwrite(&foo, 1, offsetof(elf, _end), stdout); }" >> $(REC)
 	@ls -l $(OUT)
 
-strip: compile
+strip: compile dostrip
+
+dostrip:
 	@strip -R .hash -R .gnu.hash -R .gnu.version -R .got -R .rel.plt -R .rel.got $(OUT) -o $(OUT)b
 	@sstrip -z $(OUT)b
-	@ls -l $(OUT)b
+	bash ./dyntrunc.sh $(OUT)b $(OUT)c 2>/dev/null
+	@ls -l $(OUT) $(OUT)b $(OUT)c
 	$(LOAD) ./$(OUT)b || echo "return $$?"
+	$(LOAD) ./$(OUT)c || echo "return $$?"
 
 debug: hello.c
 	$(CC) -g -DNOSTART -nostartfiles hello.c -o strip3 -Wl,-M > map
