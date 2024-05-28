@@ -8,12 +8,16 @@
 #include <dlfcn.h>
 #include <stddef.h>
 
+#define ABORT() __asm__("int $0x3")
+
 #define IMPORT(...) static IMPORT_GLOBAL(__VA_ARGS__)
 
-// some macro magic from stackoverflow to call a function that has number
-// of parameters in the function name
+// some macro magic from stackoverflow to call a function that has the
+// parameter count in the function name
 // TODO: maybe better with an external script, especially because functions
 // which return void are also a problem at the moment
+// edit: ...and variadic functions are also completely borked of course
+
 #define IMPORT_GLOBAL(...) MKFN(IMPORT_GLOBAL,##__VA_ARGS__)
 #define MKFN(fn,...) MKFN_N(fn,##__VA_ARGS__,9,8,7,6,5,4,3,2,1,0)(__VA_ARGS__)
 #define MKFN_N(fn, NAME, RET, n0,n1,n2,n3,n4,n5,n6,n7,n8,n,...) fn##n
@@ -60,11 +64,6 @@
 		_Pragma("GCC diagnostic pop")\
 	}
 
-// with last pragma
-#define IMPORT_STACK(...) \
-	IMPORT_STACK_PARTIAL(__VA_ARGS__);\
-	_Pragma("GCC diagnostic pop")
-
 // missing the last pragma
 #define IMPORT_STACK_PARTIAL(NAME, RET, ...) \
 	_Pragma("GCC diagnostic push")\
@@ -72,19 +71,27 @@
 	RET (*(NAME))(__VA_ARGS__) = dlsym(RTLD_DEFAULT, #NAME);\
 	dlerr()
 
+// with last pragma
+#define IMPORT_STACK(...) \
+	IMPORT_STACK_PARTIAL(__VA_ARGS__);\
+	_Pragma("GCC diagnostic pop")
+
 #define DLOPEN(lib) \
 	dlopen2((lib), RTLD_LAZY);\
 	dlerr()
 
 #ifdef DEBUG
-#include <stdlib.h>
-#include <stdio.h>
 void dlerr(){
 	char *error;
 	error = dlerror();
 	if (error != NULL) {
-		fprintf(stderr, "%s\n", error);
-		exit(EXIT_FAILURE);
+		_Pragma("GCC diagnostic push")\
+		_Pragma("GCC diagnostic ignored \"-Wpedantic\"")\
+		int (*myputs)(const char *) = dlsym(RTLD_DEFAULT, "puts");
+		_Pragma("GCC diagnostic pop")
+		myputs("dlerr: ");
+		myputs(error);
+		ABORT();
 	}
 }
 #else
