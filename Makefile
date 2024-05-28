@@ -5,12 +5,15 @@ LD   = ld
 LTO  = 0
 BITS = 32
 SRC  = hello.c
-OUT  = strip3
+OUT  = Xstrip3
 INTERP = 0
-PROG = -DNOSTART -DDYN -DNOSTACK
+PROG = NOSTACK DYN NOSTART
 
+### end user config
+
+PROG := $(patsubst %,-D%,$(PROG))
 OBJ=$(SRC:.c=.o)
-FILES=$(OBJ) -o $(OUT)
+FILES=$(OBJ) -o $(OUT)p
 
 ifeq ($(LTO),1)
 LD = $(CC)
@@ -26,13 +29,12 @@ endif
 
 LDFLAGS0=--gc-sections --print-gc-sections -z norelro -z noseparate-code
 LDFLAGS=$(LDFLAGS0) --build-id=none --orphan-handling=warn --script=$(SCRIPT) --print-map
-LDFLAGS+=-z nocopyreloc
+LDFLAGS+=-z nocopyreloc -V
 
 #CFLAGS0=-ffunction-sections -fdata-sections
 #CFLAGS0+=-falign-functions=1 -falign-loops=1 -fomit-frame-pointer
-#CFLAGS0+=-Wpedantic -Wall -Wextra
 #CFLAGS0+=-ffast-math -fno-exceptions -fomit-frame-pointer -funsafe-math-optimizations -fvisibility=hidden -march=pentium4
-CFLAGS=$(CFLAGS0) -fno-asynchronous-unwind-tables -fno-stack-clash-protection -fno-stack-protector -fcf-protection=none -fno-pie -fno-PIE -fno-pic -fno-PIC -fno-plt -mpreferred-stack-boundary=$(STACK)
+CFLAGS=$(CFLAGS0) -fno-asynchronous-unwind-tables -fno-stack-clash-protection -fno-stack-protector -fcf-protection=none -fno-pie -fno-PIE -fno-pic -fno-PIC -fno-plt
 WARNINGS=-Wpedantic -Wall -Wextra -Wno-old-style-declaration
 
 ifeq ($(LD),$(CC))
@@ -66,41 +68,43 @@ ifeq ($(INTERP),0)
 LOAD:=$(DL)
 DL=
 else
-DL:=-dynamic-linker $(DL)
+DL:=--dynamic-linker $(DL)
 endif
 
 endif
 
 ifeq ($(CC),gcc)
-EXTRA=-Os -flto -fwhole-program -ffat-lto-objects
+EXTRA=-Os -flto -fwhole-program -ffat-lto-objects -mpreferred-stack-boundary=$(STACK)
 endif
 ifeq ($(CC),clang)
 EXTRA=-Oz -Wunknown-warning-option
 endif
 
-REC = rec.c
+REC = rec
+COMPILE=$(CC) $(EXTRA) $(CFLAGS) -m$(BITS) $(PROG) $^
 
 compile: $(SRC)
-	$(CC) $(EXTRA) $(CFLAGS) -m$(BITS) $(WARNINGS) $(PROG) -c $^
-	$(CC) $(EXTRA) $(CFLAGS) -m$(BITS) -fno-lto -DNOSTART -S -fverbose-asm $^
+	$(COMPILE) $(WARNINGS) -c
+	@$(COMPILE) -fno-lto -fverbose-asm -S
 	$(LD) $(LEXTRA) $(LDFLAGS) $(FILES) $(LIBS) > map
-	@echo "#if 0" > $(REC)
-	@echo "OUT=$(OUT)" >> $(REC)
-	@echo "LOAD=$(LOAD)" >> $(REC)
-	@cat rechead >> $(REC)
-	elftoc -e $(OUT) >> $(REC)
-	@echo "int main(void) { return fwrite(&foo, 1, offsetof(elf, _end), stdout); }" >> $(REC)
-	@ls -l $(OUT)
+	elftoc -e $(OUT)p > $(REC).c
+	@echo '#include "whiten.h"\n#include <stdio.h>\nint main(void) { fwrite(&foo, 1, offsetof(elf, _end), stdout);return(0); }' >> $(REC).c
+	#sed -E 's/libc\.so\.6[^"]+"/libm.so"/;s/R_386_GLOB_DAT/R_386_32/g;/ DT_(DEBUG|HASH|STRSZ|ADDRNUM|VER.*|REL.*),/d' $(REC).c > $(REC)2.c
+	sed -E 's/libc\.so\.6[^"]+"/libm.so"/;s/R_386_GLOB_DAT/R_386_32/g;/ DT_(DEBUG|HASH|STRSZ|ADDRNUM|VER.*),/d' $(REC).c > $(REC)2.c
+	sed -i '3a #include "whiten.h"\n' $(REC)2.c
+	@$(CC) $(REC)2.c -o dorec
+	@./dorec > $(OUT) ||:
+	@#ls -l $(OUT)
 
 strip: compile dostrip
 
 dostrip:
-	@strip -R .hash -R .gnu.hash -R .gnu.version -R .got -R .rel.plt -R .rel.got $(OUT) -o $(OUT)b
+	@strip -R .hash -R .gnu.hash -R .gnu.version -R .gnu.version_r -R .got -R .got.plt -R .rel.plt -R .rel.got $(OUT) -o $(OUT)b
+	@#cp $(OUT) $(OUT)b
 	@sstrip -z $(OUT)b
-	bash ./dyntrunc.sh $(OUT)b $(OUT)c 2>/dev/null
-	@ls -l $(OUT) $(OUT)b $(OUT)c
+	@ls -l $(OUT) $(OUT)b
 	$(LOAD) ./$(OUT)b || echo "return $$?"
-	$(LOAD) ./$(OUT)c || echo "return $$?"
+	bash ./sfx.sh $(OUT)b
 
 debug: hello.c
 	$(CC) -g -DNOSTART -nostartfiles hello.c -o strip3 -Wl,-M > map
