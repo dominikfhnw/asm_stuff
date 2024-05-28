@@ -8,8 +8,8 @@
 #include <dlfcn.h>
 #include <stddef.h>
 
+#define UNUSED __attribute__((unused))
 #define ABORT() __asm__("int $0x3")
-
 #define IMPORT(...) static IMPORT_GLOBAL(__VA_ARGS__)
 
 // some macro magic from stackoverflow to call a function that has the
@@ -98,11 +98,12 @@ void dlerr(){
 #define dlerr()
 #endif
 
-static void* dlopen2(const char* lib, int flags){
+UNUSED static void* dlopen2(const char* lib, int flags){
 	IMPORT_STACK(dlopen, void*, const char*, int);
 	return dlopen(lib, flags);
 }
 
+__attribute__((section (".dlptr"))) void* (*dlsym_ptr)(void * restrict, const char * restrict);
 #else
 #define IMPORT(...)
 #define IMPORT_STACK(...)
