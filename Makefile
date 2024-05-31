@@ -5,7 +5,7 @@ LD   = ld
 LTO  = 0
 BITS = 32
 SRC  = hello.c
-OUT  = Xstrip3
+OUT  = aa
 INTERP = 0
 PROG = NOSTACK DYN NOSTART
 
@@ -34,8 +34,10 @@ LDFLAGS+=-z nocopyreloc -V
 #CFLAGS0=-ffunction-sections -fdata-sections
 #CFLAGS0+=-falign-functions=1 -falign-loops=1 -fomit-frame-pointer
 #CFLAGS0+=-ffast-math -fno-exceptions -fomit-frame-pointer -funsafe-math-optimizations -fvisibility=hidden -march=pentium4
-CFLAGS=$(CFLAGS0) -fno-asynchronous-unwind-tables -fno-stack-clash-protection -fno-stack-protector -fcf-protection=none -fno-pie -fno-PIE -fno-pic -fno-PIC -fno-plt
-WARNINGS=-Wpedantic -Wall -Wextra -Wno-old-style-declaration
+CFLAGS=$(CFLAGS0) -fwhole-program -std=gnu99 -U_FORTIFY_SOURCE -fno-builtin -masm=intel -fno-asynchronous-unwind-tables -fno-stack-clash-protection -fno-stack-protector -fcf-protection=none -fno-pie -fno-PIE -fno-pic -fno-PIC -fno-plt
+#CFLAGS=$(CFLAGS0) -fno-builtin -masm=intel -fno-pie -fno-PIE -fno-pic -fno-PIC -fno-plt
+#CFLAGS=$(CFLAGS0) -std=gnu99 -U_FORTIFY_SOURCE -fsanitize=address -fno-builtin -masm=intel -fno-pie -fno-PIE -fno-pic -fno-PIC -fno-plt
+WARNINGS=-Wall -Wextra -Wno-old-style-declaration
 
 ifeq ($(LD),$(CC))
 P := -Wl,--
@@ -62,6 +64,7 @@ DL=/libx32/ld-linux-x32.so.2
 STACK=3
 endif
 LIBS=-lgcc -lgcc_s -lc
+#LIBS=-lasan -lubsan -lgcc -lgcc_s -lc
 LEXTRA=-m$(FORMAT) $(DL) $(LIBDIR) --as-needed --hash-style=sysv
 
 ifeq ($(INTERP),0)
@@ -74,41 +77,41 @@ endif
 endif
 
 ifeq ($(CC),gcc)
-EXTRA=-Os -flto -fwhole-program -ffat-lto-objects -mpreferred-stack-boundary=$(STACK)
+EXTRA=-Os -mpreferred-stack-boundary=$(STACK)
 endif
 ifeq ($(CC),clang)
-EXTRA=-Oz -Wunknown-warning-option
+EXTRA=-Oz -Wno-unknown-warning-option
 endif
 
 REC = rec
 COMPILE=$(CC) $(EXTRA) $(CFLAGS) -m$(BITS) $(PROG) $^
 
 compile: $(SRC)
-	$(COMPILE) $(WARNINGS) -c
-	@$(COMPILE) -fno-lto -fverbose-asm -S
+	$(COMPILE) $(WARNINGS) -g -c
+	@$(COMPILE) -w -fverbose-asm -S -o $(OUT).s
 	$(LD) $(LEXTRA) $(LDFLAGS) $(FILES) $(LIBS) > map
-	elftoc -e $(OUT)p > $(REC).c
+	@cat rechead2 > $(REC).c
+	@elftoc -e $(OUT)p >> $(REC).c
 	@echo '#include "whiten.h"\n#include <stdio.h>\nint main(void) { fwrite(&foo, 1, offsetof(elf, _end), stdout);return(0); }' >> $(REC).c
-	#sed -E 's/libc\.so\.6[^"]+"/libm.so"/;s/R_386_GLOB_DAT/R_386_32/g;/ DT_(DEBUG|HASH|STRSZ|ADDRNUM|VER.*|REL.*),/d' $(REC).c > $(REC)2.c
-	sed -E 's/libc\.so\.6[^"]+"/libm.so"/;s/R_386_GLOB_DAT/R_386_32/g;/ DT_(DEBUG|HASH|STRSZ|ADDRNUM|VER.*),/d' $(REC).c > $(REC)2.c
-	sed -i '3a #include "whiten.h"\n' $(REC)2.c
+	@#sed -E 's/libc\.so\.6[^"]+"/libm.so"/;s/R_386_GLOB_DAT/R_386_32/g;/ DT_(DEBUG|HASH|STRSZ|ADDRNUM|VER.*|REL.*),/d' $(REC).c > $(REC)2.c
+	@#sed -E 's/libc\.so\.6[^"]+"/libm.so"/;s/R_386_GLOB_DAT/R_386_32/g;/ DT_(HASH|STRSZ|ADDRNUM|VER.*),/d' $(REC).c > $(REC)2.c
+	@#sed -E 's/R_386_GLOB_DAT/R_386_32/g;/ DT_(HASH|STRSZ|ADDRNUM|VER.*),/d' $(REC).c > $(REC)2.c
+	@sed -E 's/libc\.so\.6[^"]+"/libm.so"/;s/R_386_GLOB_DAT/R_386_32/g;/ DT_(HASH|STRSZ|ADDRNUM|VER.*),/d' $(REC).c > $(REC)2.c
+	@sed -i '3a #include "whiten.h"\n' $(REC)2.c
 	@$(CC) $(REC)2.c -o dorec
-	@./dorec > $(OUT) ||:
+	@./dorec > $(OUT)
 	@#ls -l $(OUT)
 
 strip: compile dostrip
 
 dostrip:
-	@strip -R .hash -R .gnu.hash -R .gnu.version -R .gnu.version_r -R .got -R .got.plt -R .rel.plt -R .rel.got $(OUT) -o $(OUT)b
-	@#cp $(OUT) $(OUT)b
+	@strip -wK'*' -R .hash -R .gnu.hash -R .gnu.version -R .gnu.version_r -R .got -R .got.plt -R .rel.plt -R .rel.got $(OUT)
+	@cp $(OUT) $(OUT)b
 	@sstrip -z $(OUT)b
-	@ls -l $(OUT) $(OUT)b
+	@ls -l $(OUT)
+	@echo
 	$(LOAD) ./$(OUT)b || echo "return $$?"
-	bash ./sfx.sh $(OUT)b
-
-debug: hello.c
-	$(CC) -g -DNOSTART -nostartfiles hello.c -o strip3 -Wl,-M > map
-	@ls -l strip3
+	@bash ./sfx.sh $(OUT)b
 
 .PHONY: map
 map:
