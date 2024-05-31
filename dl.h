@@ -9,7 +9,7 @@
 #include <stddef.h>
 
 #define UNUSED __attribute__((unused))
-#define ABORT() __asm__("int $0x3")
+#define ABORT() __asm__("int 0x3")
 #define IMPORT(...) static IMPORT_GLOBAL(__VA_ARGS__)
 
 // some macro magic from stackoverflow to call a function that has the
