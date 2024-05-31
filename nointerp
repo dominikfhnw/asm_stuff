@@ -2,28 +2,15 @@ ENTRY(_start)
 
 PHDRS
 {
-text PT_LOAD PHDRS;
+text PT_LOAD FILEHDR PHDRS;
 dynamic PT_DYNAMIC;
 }
 
 SECTIONS
 {
   /* Read-only sections, merged into text segment: */
-  PROVIDE (__executable_start = SEGMENT_START("text-segment", 0x400000)); . = SEGMENT_START("text-segment", 0x400000) + SIZEOF_HEADERS;
-  .text           :
-  {
-    *(.text.unlikely .text.*_unlikely .text.unlikely.*)
-    *(.text.exit .text.exit.*)
-    *(.text.startup .text.startup.*)
-    *(.text.hot .text.hot.*)
-    *(SORT(.text.sorted.*))
-    *(.text .stub .text.* .gnu.linkonce.t.*)
-    /* .gnu.warning sections are handled specially by elf.em.  */
-    *(.gnu.warning)
-  }
-  .rodata         : { *(.rodata .rodata.* .gnu.linkonce.r.*) } :text
-  .rodata1        : { *(.rodata1) }
-  .dynstr         : { *(.dynstr) }
+  PROVIDE (__executable_start = SEGMENT_START("text-segment", 0x400000));
+  . = __executable_start + SIZEOF_HEADERS;
   .dynsym         : { *(.dynsym) }
   .rela.init      : { *(.rela.init) }
   .rela.text      : { *(.rela.text .rela.text.* .rela.gnu.linkonce.t.*) }
@@ -139,24 +126,6 @@ SECTIONS
   .data1          : { *(.data1) }
   _edata = .; PROVIDE (edata = .);
   . = .;
-  __bss_start = .;
-  .bss            :
-  {
-   *(.dynbss)
-   *(.bss .bss.* .gnu.linkonce.b.*)
-   *(COMMON)
-   /* Align here to ensure that the .bss section occupies space up to
-      _end.  Align after .bss to ensure correct alignment even if the
-      .bss section disappears because there are no input sections.
-      FIXME: Why do we need it? When there is no .bss section, we do not
-      pad the .data section.  */
-  }
-  .lbss   :
-  {
-    *(.dynlbss)
-    *(.lbss .lbss.* .gnu.linkonce.lb.*)
-    *(LARGE_COMMON)
-  }
   . = SEGMENT_START("ldata-segment", .);
   .lrodata   :
   {
@@ -213,6 +182,20 @@ SECTIONS
   .debug_str_offsets 0 : { *(.debug_str_offsets) }
   .debug_sup      0 : { *(.debug_sup) }
   .gnu.attributes 0 : { KEEP (*(.gnu.attributes)) }
+  .text           :
+  {
+    *(.text.unlikely .text.*_unlikely .text.unlikely.*)
+    *(.text.exit .text.exit.*)
+    *(.text.startup .text.startup.*)
+    *(.text.hot .text.hot.*)
+    *(SORT(.text.sorted.*))
+    *(.text .stub .text.* .gnu.linkonce.t.*)
+    /* .gnu.warning sections are handled specially by elf.em.  */
+    *(.gnu.warning)
+  }
+  .rodata         : { *(.rodata.first .rodata .rodata.* .gnu.linkonce.r.*) } :text
+  .rodata1        : { *(.rodata1) }
+  .dynstr         : { *(.dynstr) }
   .dynamic        : { *(.dynamic) } :text :dynamic
   .got.plt        : { *(.got.plt) *(.igot.plt) } :text
   .gnu.hash       : { *(.gnu.hash) } :text
@@ -221,7 +204,25 @@ SECTIONS
   .gnu.version_d  : { *(.gnu.version_d) }
   .gnu.version_r  : { *(.gnu.version_r) }
   .got            : { *(.got) *(.igot) } :text
-  /DISCARD/ : { *(.note.*) *(.gnu_debuglink) *(.gnu.lto_*) *(.comment) *(.eh_frame_hdr) *(.eh_frame) *(.gnu.hash)
+  __bss_start = .;
+  .bss            :
+  {
+   *(.dynbss)
+   *(.bss .bss.* .gnu.linkonce.b.*)
+   *(COMMON)
+   /* Align here to ensure that the .bss section occupies space up to
+      _end.  Align after .bss to ensure correct alignment even if the
+      .bss section disappears because there are no input sections.
+      FIXME: Why do we need it? When there is no .bss section, we do not
+      pad the .data section.  */
+  }
+  .lbss   :
+  {
+    *(.dynlbss)
+    *(.lbss .lbss.* .gnu.linkonce.lb.*)
+    *(LARGE_COMMON)
+  }
+   /DISCARD/ : { *(.note.*) *(.gnu_debuglink) *(.gnu.lto_*) *(.comment) *(.eh_frame_hdr) *(.eh_frame) *(.gnu.hash)
 	*(.rel.bss)
 	*(.rel.iplt)
 	*(.rel.data.*)
