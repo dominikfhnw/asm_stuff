@@ -36,7 +36,7 @@ static int __dbg_nonl(const char *s){
 #define DBG_FD		STDERR_FILENO
 #define DBG_OP(STRING)	: : [syscall]"g"(DBG_SYSCALL), [fd]"g"(DBG_FD), [size]"g"(DBG_LEN(STRING)) 
 
-#define dbg3(STRING) asm volatile(\
+#define dbg3(STRING) asm volatile("DBG%=:\n"\
  		DBG_PUSH\
 		"push %[fd]\n"\
 		"push %[size]\n"\
@@ -52,7 +52,7 @@ static int __dbg_nonl(const char *s){
 	);
 
 
-#define dbg2(STRING) asm volatile(\
+#define dbg2(STRING) asm volatile("DBG%=:\n"\
 		"push %[fd]\n"\
 		"push %[size]\n"\
 		"call 0f\n"\
