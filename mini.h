@@ -46,11 +46,12 @@ int main();
 #else
 #define GCCATTR
 #endif
-volatile void *xlink_map;
+static void *xlink_map;
 __attribute__((noreturn, used, GCCATTR )) void _start(){
 	// save EAX register in link map. Has to be the first command.
 	asm volatile("" : "=a" (xlink_map));
 
+#if DBG_STARTUP
 	asm volatile(
 		"push 2\n"
 		"push 4\n"
@@ -70,6 +71,7 @@ __attribute__((noreturn, used, GCCATTR )) void _start(){
 		"int 0x80\n"
 		: : : "eax", "ebx", "ecx", "edx"
 	);
+#endif
 	/*
 	if(xlink_map == 0){
 		dbg2("/lib/ld* <prog>, dummy!");
@@ -127,10 +129,14 @@ __attribute__((noreturn, used, GCCATTR )) void _start(){
 	MAYBEBREAK();
 	
 	int ret = fakemain();
-	IMPORT_STACK(fflush, int, int);
-	fflush(0);
 	dbg2("end");
-	_exit(ret);
+	//asm volatile("0: jmp 0b");
+	IMPORT_STACK(exit, void, int);
+	exit(ret);
+	__builtin_unreachable();
+	//IMPORT_STACK(fflush, int, int);
+	//fflush(0);
+	//_exit(ret);
 }
 #endif
 
