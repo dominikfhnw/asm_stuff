@@ -1,5 +1,5 @@
 #if 0
-gcc -no-pie -Os -g -fsanitize=address,undefined -m32 -masm=intel $0 && ./a.out
+gcc -DDD2 -no-pie -Os -g -fsanitize=address,undefined -m32 -masm=intel $0 && ./a.out
 exit
 #endif
 static void* (*dlsym2)(int zero, const char*);
@@ -15,6 +15,7 @@ static int (*printf2)(const char*, ...);
 
 #if DYN
 #define ELF_BASE_ADDRESS 0x400000
+#define printf(...)
 #else
 #define ELF_BASE_ADDRESS 0x8048000
 #endif
@@ -57,7 +58,15 @@ static int put2(const char *str, size_t len){
 #else
 #include <stdio.h>
 #define dputs(...) puts(__VA_ARGS__)
-#define dprintf(...) printf2(__VA_ARGS__)
+#define dprintf(...) printf(__VA_ARGS__)
+#endif
+
+#if DD2
+#define DN_DBG(...) dbg2(__VA_ARGS__)
+#define DN_PRINTF(...) printf(__VA_ARGS__)
+#else
+#define DN_DBG(...)
+#define DN_PRINTF(...)
 #endif
 
 int main(){
@@ -102,7 +111,7 @@ static const void* elf32_get_dynamic_address_by_tag(const void *dyn, Elf32_Sword
 	const Elf32_Dyn *dynamic = (Elf32_Dyn*)dyn;
 	for(;;)
 	{
-		dprintf("dyntab 0x%x %d 0x%x\n", dynamic, dynamic->d_tag, dynamic->d_un.d_ptr);
+		//dprintf("dyntab 0x%x %d 0x%x\n", dynamic, dynamic->d_tag, dynamic->d_un.d_ptr);
 		if(dynamic->d_tag == tag)
 		{
 			return (const void*)dynamic->d_un.d_ptr;
@@ -129,23 +138,25 @@ static const void* elf32_get_library_dynamic_section(const struct link_map *lmap
 }
 
 static void loopy(uint32_t volatile numchains, const Elf32_Sym* symtab, const char* strtab, const struct link_map* lmap){
-	dprintf("loopy: num:%x sym:0x%x str:0x%x lmap:0x%x\n", numchains, symtab, strtab, lmap);
+	DN_PRINTF("loopy: num:%x sym:0x%x str:0x%x lmap:0x%x\n", numchains, symtab, strtab, lmap);
 	uint32_t ii;
 	for(ii = 0; (ii < numchains); ++ii)
 	{
 		const Elf32_Sym* sym = &symtab[ii];
 		const char *name = &strtab[sym->st_name];
 		const int nn = *(int*)&strtab[sym->st_name];
-		dprintf("p%d: %s %x %x\n", ii, name, nn, sym);
+		#if DD2
+		DN_PRINTF("%d: %s %x %x\n", ii, name, nn, sym);
+		#endif
 		void* val = (void*)((const uint8_t*)sym->st_value + (size_t)lmap->l_addr);
 		if(nn == 0x79736c64){
-			//dbg2("found");
+			DN_DBG("found");
 			dlsym2 = val;
 		}
 		//printf("n %s\tval %d\tlmap %d\tval %p\n", name,sym->st_value, lmap->l_addr, val);
 
+		//sputs(name);
 		#if DL_DEBUG
-		sputs(name);
 		//printf("%4d: %p %s\n", ii, val, name);
 		#endif
 	}
@@ -155,6 +166,7 @@ static void loopy(uint32_t volatile numchains, const Elf32_Sym* symtab, const ch
 void* dnload_find_symbol()
 {
 	dprintf("Link start\n");
+	//IMPORT_STACK(printf, int, const char *, ...);
 #ifdef HACKY
 	const struct link_map* lmap = xlink_map;
 #else
@@ -165,10 +177,47 @@ void* dnload_find_symbol()
 		if(lmap == 0){
 			return 0;
 		}
-		const char* strtab = (const char*)elf32_get_library_dynamic_section(lmap, DT_STRTAB);
-		const Elf32_Sym* symtab = (const Elf32_Sym*)elf32_get_library_dynamic_section(lmap, DT_SYMTAB);
-		const uint32_t* hashtable = (const uint32_t*)elf32_get_library_dynamic_section(lmap, DT_HASH);
+		DN_DBG("ITER");
+		DN_PRINTF("NAME: %s (%p)\n", lmap->l_name, lmap);
+		const void* base = lmap->l_addr;
+		const char* strtab;
+		const Elf32_Sym* symtab;
+		uint32_t* hashtable = 0;
+		const Elf32_Dyn *dynamic = (Elf32_Dyn*)lmap->l_ld;
+
+		//DN_PRINTF("HASHpre: %p %p\n", hashtable, 0);
+		for(;;)
+		{
+			int ptr = dynamic->d_un.d_ptr;
+			if(ptr < base)
+				ptr = ptr + base;
+
+			//printf("mmm %p %d\n", ptr, dynamic->d_tag);
+			switch (dynamic->d_tag){
+				case DT_STRTAB:
+					DN_DBG("strtab");
+					strtab = (const char*)ptr;
+					break;
+				case DT_SYMTAB:
+					DN_DBG("symtab");
+					symtab = (const Elf32_Sym*)ptr;
+					break;
+				case DT_HASH:
+					DN_DBG("!!!!hash");
+					hashtable = (const uint32_t*)ptr;
+					break;
+				case DT_NULL:
+					DN_DBG("END");
+					goto end;
+			}
+			++dynamic;
+		}
+		end:
+		DN_PRINTF("STRTAB: %p %p\n", strtab, elf32_get_library_dynamic_section(lmap, DT_STRTAB));
+		DN_PRINTF("SYMTAB: %p %p\n", symtab, elf32_get_library_dynamic_section(lmap, DT_SYMTAB));
+		DN_PRINTF("HASH:   %p %p\n", hashtable, elf32_get_library_dynamic_section(lmap, DT_HASH));
 		if(hashtable == 0){
+			DN_DBG("EMPTY HASH");
 			goto next;
 		}
 		uint32_t volatile numchains = hashtable[1]; /* Number of symbols. */

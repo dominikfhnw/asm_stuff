@@ -5,7 +5,7 @@ LD   = ld
 LTO  = 0
 BITS = 32
 SRC  = hello.c
-OUT  = aa
+OUT  = ab
 INTERP = 0
 #PROG = DD DL_DEBUG DBG_INIT HACKY NOSTACK DYN NOSTART
 PROG = HACKY NOSTACK DYN NOSTART
@@ -101,7 +101,7 @@ compile: $(SRC)
 	@#sed -E 's/libc\.so\.6[^"]+"/libm.so"/;s/R_386_GLOB_DAT/R_386_32/g;/ DT_(HASH|STRSZ|ADDRNUM|VER.*),/d' $(REC).c > $(REC)2.c
 	@#sed -E 's/R_386_GLOB_DAT/R_386_32/g;/ DT_(HASH|STRSZ|ADDRNUM|VER.*),/d' $(REC).c > $(REC)2.c
 	#@sed -E 's/libc\.so\.6[^"]+"/libm.so"/;s/R_386_GLOB_DAT/R_386_32/g;/ DT_(HASH|STRSZ|ADDRNUM|VER.*),/d' $(REC).c > $(REC)2.c
-	@sed -E 's/dlsym.*libc\.so\.6[^"]+"/libm.so"/;/R_386_GLOB_DAT/d; /DT_NEEDED/s/ 7 / 1 /; /dynstr/s/28/8/;/ DT_(NEEDED|HASH|STRSZ|ADDRNUM|VER.*|REL.*|DEBUG),/d; /0, 0.*STT_FUNC/d; ' $(REC).c > $(REC)2.c
+	@sed -E 's/dlsym.*libc\.so\.6[^"]+"/libm.so\\0"/;/R_386_GLOB_DAT/d; /DT_NEEDED/s/ 7 / 1 /; /dynstr/s/28/9/;/ DT_(NEEDED|HASH|STRSZ|ADDRNUM|VER.*|REL.*|DEBUG),/d; /0, 0.*STT_FUNC/d; ' $(REC).c > $(REC)2.c
 	@sed -i '3a #include "whiten.h"\n' $(REC)2.c
 	@sed -i '/DT_SYMTAB/a { DT_NEEDED, { 1 } },\n' $(REC)2.c
 	@$(CC) $(REC)2.c -o dorec
