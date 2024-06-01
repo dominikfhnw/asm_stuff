@@ -21,7 +21,7 @@ static int (*printf2)(const char*, ...);
 #endif
 
 //static void dnload(void);
-static void* dnload_find_symbol(uint32_t hash);
+static void* dnload_find_symbol(int search);
 static const struct link_map* elf32_get_link_map();
 static const void* elf32_get_dynamic_address_by_tag(const void *dyn, Elf32_Sword tag);
 static int (*puts2)(const char *);
@@ -71,7 +71,7 @@ static int put2(const char *str, size_t len){
 
 int main(){
 
-	dnload_find_symbol(0);
+	dnload_find_symbol(0x79736c64);
 	// TODO: find better way to force-use dlsym
 	asm volatile("" :: "r"(&dlsym));
 	return 42;
@@ -137,7 +137,7 @@ static const void* elf32_get_library_dynamic_section(const struct link_map *lmap
 	return f;
 }
 
-static void loopy(uint32_t volatile numchains, const Elf32_Sym* symtab, const char* strtab, const struct link_map* lmap){
+static void loopy(uint32_t volatile numchains, const Elf32_Sym* symtab, const char* strtab, const struct link_map* lmap, int search){
 	DN_PRINTF("loopy: num:%x sym:0x%x str:0x%x lmap:0x%x\n", numchains, symtab, strtab, lmap);
 	uint32_t ii;
 	for(ii = 0; (ii < numchains); ++ii)
@@ -147,9 +147,10 @@ static void loopy(uint32_t volatile numchains, const Elf32_Sym* symtab, const ch
 		const int nn = *(int*)&strtab[sym->st_name];
 		#if DD2
 		DN_PRINTF("%d: %s %x %x\n", ii, name, nn, sym);
+		DN_PRINTF("SEARCH %x\n", search);
 		#endif
 		void* val = (void*)((const uint8_t*)sym->st_value + (size_t)lmap->l_addr);
-		if(nn == 0x79736c64){
+		if(nn == search){
 			DN_DBG("found");
 			dlsym2 = val;
 		}
@@ -163,7 +164,7 @@ static void loopy(uint32_t volatile numchains, const Elf32_Sym* symtab, const ch
 }
 
 //__attribute__((noinline))
-void* dnload_find_symbol()
+void* dnload_find_symbol(int search)
 {
 	dprintf("Link start\n");
 	//IMPORT_STACK(printf, int, const char *, ...);
@@ -221,7 +222,7 @@ void* dnload_find_symbol()
 			goto next;
 		}
 		uint32_t volatile numchains = hashtable[1]; /* Number of symbols. */
-		loopy(numchains, symtab, strtab, lmap);
+		loopy(numchains, symtab, strtab, lmap, search);
 		next: lmap = lmap->l_next;
 	}
 }
