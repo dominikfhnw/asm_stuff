@@ -77,6 +77,9 @@ endif
 
 endif
 
+ifeq ($(CC),gcc-12)
+EXTRA=-Oz -mpreferred-stack-boundary=$(STACK)
+endif
 ifeq ($(CC),gcc)
 EXTRA=-Os -mpreferred-stack-boundary=$(STACK)
 endif
