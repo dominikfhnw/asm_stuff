@@ -10,14 +10,24 @@ static int syscall3(int nr, int arg0, int arg1, int arg2){
 	return nr;
 }
 
+static size_t mystrlen(const char *s)
+{
+	const char *a = s;
+	for (; *s; s++);
+	return s-a;
+}
+
+static void sputs(const char *s){
+	size_t n = mystrlen(s);
+	char* nl = "\n";
+	syscall3(SYS_write, STDERR_FILENO, (int)s, n);
+	syscall3(SYS_write, STDERR_FILENO, (int)nl, 1);
+}
+
 static int put(const char *s, size_t n){
 	return syscall3(SYS_write, STDERR_FILENO, (int)s, n);
 }
 
-static int __dbg_nonl(const char *s){
-	size_t n = __builtin_strlen(s);
-	return syscall3(SYS_write, STDERR_FILENO, (int)s, n);
-}
 
 #define DBG_PUSH \
 	"push ebx\n"\
@@ -66,5 +76,5 @@ static int __dbg_nonl(const char *s){
 	);
 
 
-#define dbg(STR) __dbg_nonl(STR "\n")
+#define dbg(STR) sputs(STR "\n")
 

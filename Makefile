@@ -7,7 +7,8 @@ BITS = 32
 SRC  = hello.c
 OUT  = aa
 INTERP = 0
-PROG = NOSTACK DYN NOSTART
+#PROG = DD DL_DEBUG DBG_STARTUP HACKY NOSTACK DYN NOSTART
+PROG = HACKY NOSTACK DYN NOSTART
 
 ### end user config
 
@@ -87,7 +88,7 @@ REC = rec
 COMPILE=$(CC) $(EXTRA) $(CFLAGS) -m$(BITS) $(PROG) $^
 
 compile: $(SRC)
-	$(COMPILE) $(WARNINGS) -g -c
+	$(COMPILE) $(WARNINGS) -gdwarf-4 -c
 	@$(COMPILE) -w -fverbose-asm -S -o $(OUT).s
 	$(LD) $(LEXTRA) $(LDFLAGS) $(FILES) $(LIBS) > map
 	@cat rechead2 > $(REC).c
@@ -105,7 +106,7 @@ compile: $(SRC)
 strip: compile dostrip
 
 dostrip:
-	@strip -wK'*' -R .hash -R .gnu.hash -R .gnu.version -R .gnu.version_r -R .got -R .got.plt -R .rel.plt -R .rel.got $(OUT)
+	@strip --strip-dwo -wK'*' -R .hash -R .gnu.hash -R .gnu.version -R .gnu.version_r -R .got -R .got.plt -R .rel.plt -R .rel.got $(OUT)
 	@cp $(OUT) $(OUT)b
 	@sstrip -z $(OUT)b
 	@ls -l $(OUT)
@@ -116,4 +117,4 @@ dostrip:
 .PHONY: map
 map:
 	@sed -n '/^Linker script and memory map/,$${/^\./{/^[^ ]*$$/d;/0x0$$/d;p}}' map |\
-	mawk '{a=a+$$3;printf "%20s %20s %5d %5d\n",$$1,$$2,$$3,$$2-l;l=$$2;}END{printf "%20s %20s %5d\n","TOTAL","",a}'
+	mawk '{a=a+$$3;printf "%20s %20s %5d\n",$$1,$$2,$$3,$$2-l;l=$$2;}END{printf "%20s %20s %5d\n","TOTAL","",a}'

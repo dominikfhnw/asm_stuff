@@ -3,9 +3,8 @@ gcc -no-pie -Os -g -fsanitize=address,undefined -m32 -masm=intel $0 && ./a.out
 exit
 #endif
 #include "mini.h"
-#define DD 0
 
-//#include <stdio.h>
+#include <stdio.h>
 #include <unistd.h>
 
 #include <stdint.h>
@@ -20,7 +19,8 @@ exit
 //static void dnload(void);
 static void* dnload_find_symbol(uint32_t hash);
 static int (*puts2)(const char *);
-IMPORT(puts, int, const char *);
+static void* (*dlsym2)(int zero, const char*);
+//IMPORT(puts, int, const char *);
 
 //SYMBOL(text);
 //SYMBOL(dynamic);
@@ -60,30 +60,32 @@ static int put2(const char *str, size_t len){
 int main(){
 //	asm volatile("lfence" ::: "memory");
 
+	printf("dlsym2 %p\n", dlsym2);
+	dnload_find_symbol(0);
 	//IMPORT_STACK(printf, int, const char *, ...);
-#if 0
-	printf("LINK_MAP %p\n", link_map);
+#if 1
+	//printf("LINK_MAP %p\n", xlink_map);
 	//put(rodata, dynsym - rodata);
-	put("\n**********\n",12);
-	put(text2, dynamic - text2);
-	put("\n**********\n",12);
+	//put("\n**********\n",12);
+	//put(text2, dynamic - text2);
+	//put("\n**********\n",12);
 	dlsym_ptr = &dlsym;
 	//printf("ret %d\n", ret);
 	//IMPORT_STACK(puts, int, const char *);
-	puts2 = dlsym(RTLD_DEFAULT, "puts");
+	//puts2 = dlsym(RTLD_DEFAULT, "puts");
 	//puts2("Hello World!");
 
 	//SYMPRINT(interp);
-	SYMPRINT(text2);
-	SYMPRINT(rodata);
-	SYMPRINT(dynstr);
-	SYMPRINT(dynsym);
-	SYMPRINT(dynamic);
-	printf("glob %p\n", dlsym_ptr);
+	//SYMPRINT(text2);
+	//SYMPRINT(rodata);
+	//SYMPRINT(dynstr);
+	//SYMPRINT(dynsym);
+	//SYMPRINT(dynamic);
+	printf("dlsym %p\n", dlsym_ptr);
+	printf("dlsym2 %p\n", dlsym2);
 #endif
 	//printf("loca %p\n", puts2);
 	//printf("impo %p\n", &puts);
-	dnload_find_symbol(0);
 
 //	BREAK();
 	//puts("fo");
@@ -174,29 +176,38 @@ static void loopy(uint32_t volatile numchains,const Elf32_Sym* symtab, const cha
 	for(ii = 0; (ii < numchains); ++ii)
 	{
 		const Elf32_Sym* sym = &symtab[ii];
-		#if 1
+		#if 0
 		if(sym == 0){
 			dputs("!!!empty sym\n");
 			return;
 		}
 		#endif
-		dprintf("o%d: %x %x\n", ii, sym, sym->st_name);
+		//dprintf("o%d: %x %x\n", ii, sym, sym->st_name);
 		const char *name = &strtab[sym->st_name];
-		dprintf("p%d: %s %x\n", ii, name, sym);
+		const int nn = *(int*)&strtab[sym->st_name];
+		dprintf("p%d: %s %x %x\n", ii, name, nn, sym);
 		void* val = (void*)((const uint8_t*)sym->st_value + (size_t)lmap->l_addr);
+		if(nn == 0x79736c64){
+			dbg2("dlsym");
+			dlsym2 = val;
+		}
 		//printf("n %s\tval %d\tlmap %d\tval %p\n", name,sym->st_value, lmap->l_addr, val);
 		#if DD
 		if(name == 0){
-			puts("!!!empty name\n");
+			dputs("!!!empty name\n");
 			return;
 		}
 		if(val == 0){
-			puts("!!!empty val\n");
+			dputs("!!!empty val\n");
 			return;
 		}
 		#endif
-		puts(name);
-		dprintf("%d: %s\t%p\n", ii, name, val);
+
+		#if DL_DEBUG
+		printf("%4d: %p %s\n", ii, val, name);
+		#else
+		//sputs(name);
+		#endif
 		/*
 		if(sdbm_hash((const uint8_t*)name) == hash)
 		{
@@ -211,7 +222,11 @@ void* dnload_find_symbol()
 {
 	//IMPORT_STACK(printf, int, const char *, ...);
 	dprintf("Link start\n");
+#ifdef HACKY
+	const struct link_map* lmap = xlink_map;
+#else
 	const struct link_map* lmap = elf32_get_link_map();
+#endif
 	//lmap = lmap->l_next;
 	for(;;)
 	{
@@ -224,8 +239,9 @@ void* dnload_find_symbol()
 		//	dputs("!!!empty name\n");
 		//	goto next;
 		//} else {
-			puts("****** name: ");
-			puts(lmap->l_name);
+			//printf("NAM: %s", lmap->l_name);
+			//sputs("name:");
+			//sputs(lmap->l_name);
 		//}
 		/* Find symbol from link map. We need the string table and a corresponding symbol table. */
 		//dprintf("strtab pre\n");
@@ -252,7 +268,7 @@ void* dnload_find_symbol()
 		//asm volatile("int 3" ::: "memory");
 		if(hashtable == 0){
 			//IMPORT_STACK(printf, int, const char *, ...);
-			puts("!!!empty hashtable\n");
+			dputs("!!!empty hashtable\n");
 			goto next;
 		}
 		dprintf("hashtable %p\n",hashtable);
