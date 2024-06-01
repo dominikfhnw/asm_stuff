@@ -51,7 +51,7 @@ __attribute__((noreturn, used, GCCATTR )) void _start(){
 	// save EAX register in link map. Has to be the first command.
 	asm volatile("" : "=a" (xlink_map));
 
-#if DBG_STARTUP
+#if DBG_INIT
 	asm volatile(
 		"push 2\n"
 		"push 4\n"
@@ -129,7 +129,9 @@ __attribute__((noreturn, used, GCCATTR )) void _start(){
 	MAYBEBREAK();
 	
 	int ret = fakemain();
+#if DBG_INIT
 	dbg2("end");
+#endif
 	//asm volatile("0: jmp 0b");
 	IMPORT_STACK(exit, void, int);
 	exit(ret);

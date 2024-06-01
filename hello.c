@@ -3,6 +3,7 @@ gcc -no-pie -Os -g -fsanitize=address,undefined -m32 -masm=intel $0 && ./a.out
 exit
 #endif
 static void* (*dlsym2)(int zero, const char*);
+__attribute__((used)) static void* (*dlsym3)(int zero, const char*);
 static int (*printf2)(const char*, ...);
 #include "mini.h"
 
@@ -63,8 +64,8 @@ int main(){
 
 	//printf2("dlsym2 %p\n", dlsym2);
 	dnload_find_symbol(0);
-	IMPORT_STACK(printf, int, const char *, ...);
-	printf2 = &printf;
+	//IMPORT_STACK(printf, int, const char *, ...);
+	//printf2 = printf;
 #if 1
 	//printf("LINK_MAP %p\n", xlink_map);
 	//put(rodata, dynsym - rodata);
@@ -83,8 +84,13 @@ int main(){
 	//SYMPRINT(dynstr);
 	//SYMPRINT(dynsym);
 	//SYMPRINT(dynamic);
-	printf("dlsym %p\n", &dlsym);
-	printf("dlsym2 %p\n", dlsym2);
+	//volatile void* a =  (void*)&dlsym;
+	//dlsym3 =  &dlsym;
+	// TODO: find better way to force-use dlsym
+	asm volatile("" :: "r"(&dlsym));
+	//printf2("dlsym %p\n", &dlsym);
+
+	//printf("dlsym2 %p\n", dlsym2);
 #endif
 	//printf("loca %p\n", puts2);
 	//printf("impo %p\n", &puts);
@@ -171,7 +177,6 @@ static const struct link_map* elf32_get_link_map()
 	}
 }
 	
-//__attribute__((optimize("-O0")))
 static void loopy(uint32_t volatile numchains,const Elf32_Sym* symtab, const char* strtab,const struct link_map* lmap){
 	dprintf("loopy: num:%x sym:0x%x str:0x%x lmap:0x%x\n", numchains, symtab, strtab, lmap);
 	uint32_t ii;
@@ -190,7 +195,7 @@ static void loopy(uint32_t volatile numchains,const Elf32_Sym* symtab, const cha
 		dprintf("p%d: %s %x %x\n", ii, name, nn, sym);
 		void* val = (void*)((const uint8_t*)sym->st_value + (size_t)lmap->l_addr);
 		if(nn == 0x79736c64){
-			dbg2("found");
+			//dbg2("found");
 			dlsym2 = val;
 		}
 		//printf("n %s\tval %d\tlmap %d\tval %p\n", name,sym->st_value, lmap->l_addr, val);
@@ -206,9 +211,9 @@ static void loopy(uint32_t volatile numchains,const Elf32_Sym* symtab, const cha
 		#endif
 
 		#if DL_DEBUG
-		printf("%4d: %p %s\n", ii, val, name);
+		sputs(name);
+		//printf("%4d: %p %s\n", ii, val, name);
 		#else
-		//sputs(name);
 		#endif
 		/*
 		if(sdbm_hash((const uint8_t*)name) == hash)
@@ -219,7 +224,7 @@ static void loopy(uint32_t volatile numchains,const Elf32_Sym* symtab, const cha
 	}
 }
 
-//__attribute__((optimize("-Os")))
+//__attribute__((noinline))
 void* dnload_find_symbol()
 {
 	//IMPORT_STACK(printf, int, const char *, ...);
