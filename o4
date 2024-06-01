@@ -13,7 +13,6 @@ SECTIONS
   PROVIDE (__executable_start = SEGMENT_START("text-segment", 0x400000));
   . = __executable_start + SIZEOF_HEADERS;
   .interp         : { *(.interp) } :text :interp
-  .dynsym         : { *(.dynsym) }
   .rela.init      : { *(.rela.init) }
   .rela.text      : { *(.rela.text .rela.text.* .rela.gnu.linkonce.t.*) }
   .rela.fini      : { *(.rela.fini) }
@@ -199,6 +198,8 @@ SECTIONS
   .rodata1        : { *(.rodata1) }
   .dynstr         : { *(.dynstr) }
   .dynamic        : { *(.dynamic) } :text :dynamic
+  .dynsym         : { *(.dynsym) }
+  .rel.dyn        : { *(.rel.dyn) }
   .got.plt        : { *(.got.plt) *(.igot.plt) } :text
   .gnu.hash       : { *(.gnu.hash) } :text
   .hash           : { *(.hash) } :text
