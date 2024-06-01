@@ -97,7 +97,8 @@ compile: $(SRC)
 	@#sed -E 's/libc\.so\.6[^"]+"/libm.so"/;s/R_386_GLOB_DAT/R_386_32/g;/ DT_(DEBUG|HASH|STRSZ|ADDRNUM|VER.*|REL.*),/d' $(REC).c > $(REC)2.c
 	@#sed -E 's/libc\.so\.6[^"]+"/libm.so"/;s/R_386_GLOB_DAT/R_386_32/g;/ DT_(HASH|STRSZ|ADDRNUM|VER.*),/d' $(REC).c > $(REC)2.c
 	@#sed -E 's/R_386_GLOB_DAT/R_386_32/g;/ DT_(HASH|STRSZ|ADDRNUM|VER.*),/d' $(REC).c > $(REC)2.c
-	@sed -E 's/libc\.so\.6[^"]+"/libm.so"/;s/R_386_GLOB_DAT/R_386_32/g;/ DT_(HASH|STRSZ|ADDRNUM|VER.*),/d' $(REC).c > $(REC)2.c
+	#@sed -E 's/libc\.so\.6[^"]+"/libm.so"/;s/R_386_GLOB_DAT/R_386_32/g;/ DT_(HASH|STRSZ|ADDRNUM|VER.*),/d' $(REC).c > $(REC)2.c
+	@sed -E 's/dlsym.*libc\.so\.6[^"]+"/libm.so"/;/R_386_GLOB_DAT/d; /DT_NEEDED/s/ 7 / 1 /;/ DT_(HASH|STRSZ|ADDRNUM|VER.*|REL.*|DEBUG),/d; /0, 0.*STT_FUNC/d; ' $(REC).c > $(REC)2.c
 	@sed -i '3a #include "whiten.h"\n' $(REC)2.c
 	@$(CC) $(REC)2.c -o dorec
 	@./dorec > $(OUT)

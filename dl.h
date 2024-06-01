@@ -1,5 +1,9 @@
 #ifdef DYN
 
+__attribute__((section (".dlptr"))) void* (*dlsym_ptr)(void * restrict, const char * restrict);
+
+#define DLSYM dlsym2
+
 // this probably means we couldn't import a function:
 #pragma GCC diagnostic error "-Wimplicit-function-declaration"
 
@@ -68,7 +72,7 @@
 #define IMPORT_STACK_PARTIAL(NAME, RET, ...) \
 	_Pragma("GCC diagnostic push")\
 	_Pragma("GCC diagnostic ignored \"-Wpedantic\"")\
-	RET (*(NAME))(__VA_ARGS__) = dlsym(RTLD_DEFAULT, #NAME);\
+	RET (*(NAME))(__VA_ARGS__) = DLSYM(RTLD_DEFAULT, #NAME);\
 	dlerr()
 
 // with last pragma
@@ -87,7 +91,7 @@ void dlerr(){
 	if (error != NULL) {
 		_Pragma("GCC diagnostic push")\
 		_Pragma("GCC diagnostic ignored \"-Wpedantic\"")\
-		int (*myputs)(const char *) = dlsym(RTLD_DEFAULT, "puts");
+		int (*myputs)(const char *) = DLSYM(RTLD_DEFAULT, "puts");
 		_Pragma("GCC diagnostic pop")
 		myputs("dlerr: ");
 		myputs(error);
@@ -103,7 +107,6 @@ UNUSED static void* dlopen2(const char* lib, int flags){
 	return dlopen(lib, flags);
 }
 
-__attribute__((section (".dlptr"))) void* (*dlsym_ptr)(void * restrict, const char * restrict);
 #else
 #define IMPORT(...)
 #define IMPORT_STACK(...)

@@ -2,6 +2,8 @@
 gcc -no-pie -Os -g -fsanitize=address,undefined -m32 -masm=intel $0 && ./a.out
 exit
 #endif
+static void* (*dlsym2)(int zero, const char*);
+static int (*printf2)(const char*, ...);
 #include "mini.h"
 
 #include <stdio.h>
@@ -19,7 +21,6 @@ exit
 //static void dnload(void);
 static void* dnload_find_symbol(uint32_t hash);
 static int (*puts2)(const char *);
-static void* (*dlsym2)(int zero, const char*);
 //IMPORT(puts, int, const char *);
 
 //SYMBOL(text);
@@ -53,23 +54,24 @@ static int put2(const char *str, size_t len){
 #else
 #include <stdio.h>
 #define dputs(...) puts(__VA_ARGS__)
-#define dprintf(...) printf(__VA_ARGS__)
+#define dprintf(...) printf2(__VA_ARGS__)
 #endif
 
 //extern int __attribute__ ((alias (""))) var_alias;
 int main(){
 //	asm volatile("lfence" ::: "memory");
 
-	printf("dlsym2 %p\n", dlsym2);
+	//printf2("dlsym2 %p\n", dlsym2);
 	dnload_find_symbol(0);
-	//IMPORT_STACK(printf, int, const char *, ...);
+	IMPORT_STACK(printf, int, const char *, ...);
+	printf2 = &printf;
 #if 1
 	//printf("LINK_MAP %p\n", xlink_map);
 	//put(rodata, dynsym - rodata);
 	//put("\n**********\n",12);
 	//put(text2, dynamic - text2);
 	//put("\n**********\n",12);
-	dlsym_ptr = &dlsym;
+	//dlsym_ptr = &dlsym;
 	//printf("ret %d\n", ret);
 	//IMPORT_STACK(puts, int, const char *);
 	//puts2 = dlsym(RTLD_DEFAULT, "puts");
@@ -81,7 +83,7 @@ int main(){
 	//SYMPRINT(dynstr);
 	//SYMPRINT(dynsym);
 	//SYMPRINT(dynamic);
-	printf("dlsym %p\n", dlsym_ptr);
+	printf("dlsym %p\n", &dlsym);
 	printf("dlsym2 %p\n", dlsym2);
 #endif
 	//printf("loca %p\n", puts2);
@@ -188,7 +190,7 @@ static void loopy(uint32_t volatile numchains,const Elf32_Sym* symtab, const cha
 		dprintf("p%d: %s %x %x\n", ii, name, nn, sym);
 		void* val = (void*)((const uint8_t*)sym->st_value + (size_t)lmap->l_addr);
 		if(nn == 0x79736c64){
-			dbg2("dlsym");
+			dbg2("found");
 			dlsym2 = val;
 		}
 		//printf("n %s\tval %d\tlmap %d\tval %p\n", name,sym->st_value, lmap->l_addr, val);
