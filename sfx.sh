@@ -12,8 +12,11 @@ cat <<'EOF' >> "$OUT"
 zcat<$0>i 2>&-;exec /*b/ld* ./i
 EOF
 printf "\0" >> "$OUT"
-#zopfli --i1000 --deflate -c "$IN" >> "$OUT"
-zopfli --deflate -c "$IN" >> "$OUT"
+if [ -n "${RELEASE-}" ]; then
+	zopfli --i1000 --deflate -c "$IN" >> "$OUT"
+else
+	zopfli --deflate -c "$IN" >> "$OUT"
+fi
 #truncate -s -1 "$OUT"
 chmod +x "$OUT"
 ls -l "$OUT"
