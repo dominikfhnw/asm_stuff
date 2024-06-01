@@ -71,7 +71,7 @@ static int put2(const char *str, size_t len){
 
 int main(){
 
-	dnload_find_symbol(0x79736c64);
+	dlsym2 = dnload_find_symbol(0x79736c64);
 	// TODO: find better way to force-use dlsym
 	asm volatile("" :: "r"(&dlsym));
 	return 42;
@@ -137,7 +137,7 @@ static const void* elf32_get_library_dynamic_section(const struct link_map *lmap
 	return f;
 }
 
-static void loopy(uint32_t volatile numchains, const Elf32_Sym* symtab, const char* strtab, const struct link_map* lmap, int search){
+static void* loopy(uint32_t volatile numchains, const Elf32_Sym* symtab, const char* strtab, const struct link_map* lmap, int search){
 	DN_PRINTF("loopy: num:%x sym:0x%x str:0x%x lmap:0x%x\n", numchains, symtab, strtab, lmap);
 	uint32_t ii;
 	for(ii = 0; (ii < numchains); ++ii)
@@ -152,7 +152,7 @@ static void loopy(uint32_t volatile numchains, const Elf32_Sym* symtab, const ch
 		void* val = (void*)((const uint8_t*)sym->st_value + (size_t)lmap->l_addr);
 		if(nn == search){
 			DN_DBG("found");
-			dlsym2 = val;
+			return val;
 		}
 		//printf("n %s\tval %d\tlmap %d\tval %p\n", name,sym->st_value, lmap->l_addr, val);
 
@@ -222,7 +222,9 @@ void* dnload_find_symbol(int search)
 			goto next;
 		}
 		uint32_t volatile numchains = hashtable[1]; /* Number of symbols. */
-		loopy(numchains, symtab, strtab, lmap, search);
+		void *ptr = loopy(numchains, symtab, strtab, lmap, search);
+		if(ptr != NULL)
+			return ptr;
 		next: lmap = lmap->l_next;
 	}
 }
