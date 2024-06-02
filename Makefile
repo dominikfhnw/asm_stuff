@@ -12,6 +12,8 @@ PROG = HACKY NOSTACK DYN NOSTART
 
 ### end user config
 
+export INTERP
+#export RELEASE=1
 PROG := $(patsubst %,-D%,$(PROG))
 OBJ=$(SRC:.c=.o)
 FILES=$(OBJ) -o $(OUT)p
@@ -32,13 +34,14 @@ LDFLAGS0=--gc-sections --print-gc-sections -z norelro -z noseparate-code
 LDFLAGS=$(LDFLAGS0) --build-id=none --orphan-handling=warn --script=$(SCRIPT) --print-map
 LDFLAGS+=-z nocopyreloc -V
 
+#CFLAGS0=-fmodulo-sched -fmerge-all-constants -fipa-pta -fgraphite-identity -floop-nest-optimize -ftree-coalesce-vars -ftree-loop-if-convert -ftree-loop-distribution -floop-interchange -fivopts -fno-align-functions -fallow-store-data-races -ffunction-sections -fdata-sections -fstdarg-opt
 #CFLAGS0=-ffunction-sections -fdata-sections
 #CFLAGS0+=-falign-functions=1 -falign-loops=1 -fomit-frame-pointer
 #CFLAGS0+=-ffast-math -fno-exceptions -fomit-frame-pointer -funsafe-math-optimizations -fvisibility=hidden -march=pentium4
-CFLAGS=$(CFLAGS0) -fwhole-program -std=gnu99 -U_FORTIFY_SOURCE -fno-builtin -masm=intel -fno-asynchronous-unwind-tables -fno-stack-clash-protection -fno-stack-protector -fcf-protection=none -fno-pie -fno-PIE -fno-pic -fno-PIC -fno-plt
+CFLAGS=$(CFLAGS0) -fwhole-program -std=gnu99 -U_FORTIFY_SOURCE -masm=intel -fno-asynchronous-unwind-tables -fno-stack-clash-protection -fno-stack-protector -fcf-protection=none -fno-pie -fno-PIE -fno-pic -fno-PIC -fno-plt
 #CFLAGS=$(CFLAGS0) -fno-builtin -masm=intel -fno-pie -fno-PIE -fno-pic -fno-PIC -fno-plt
 #CFLAGS=$(CFLAGS0) -std=gnu99 -U_FORTIFY_SOURCE -fsanitize=address -fno-builtin -masm=intel -fno-pie -fno-PIE -fno-pic -fno-PIC -fno-plt
-WARNINGS=-Wall -Wextra -Wno-old-style-declaration
+WARNINGS=-Wall -Wextra -Wno-old-style-declaration -Wno-unused-function
 
 ifeq ($(LD),$(CC))
 P := -Wl,--
@@ -77,11 +80,12 @@ endif
 
 endif
 
+MTUNE ?= i686
 ifeq ($(CC),gcc-12)
-EXTRA=-Oz -mpreferred-stack-boundary=$(STACK)
+EXTRA=-Os -mpreferred-stack-boundary=$(STACK)
 endif
 ifeq ($(CC),gcc)
-EXTRA=-Os -mpreferred-stack-boundary=$(STACK)
+EXTRA=-Os -mtune=$(MTUNE) -mpreferred-stack-boundary=$(STACK)
 endif
 ifeq ($(CC),clang)
 EXTRA=-Oz -Wno-unknown-warning-option
@@ -118,6 +122,8 @@ dostrip:
 	@echo
 	$(LOAD) ./$(OUT)b || echo "return $$?"
 	@bash ./sfx.sh $(OUT)b
+	@bash ./whiten.sh $(OUT)b
+	@bash ./sfx.sh $(OUT)b-white
 
 .PHONY: map
 map:
