@@ -194,8 +194,8 @@ void* dnload_find_symbol(int search)
 		DN_PRINTF("NAME: %s (%p)\n", lmap->l_name, lmap);
 		//sputs2("\nNAME:"); sputs(lmap->l_name);
 		const unsigned int base = lmap->l_addr;
-		const char* strtab;
-		const Elf32_Sym* symtab;
+		const char* strtab = 0;
+		const Elf32_Sym* symtab = 0;
 		const uint32_t* hashtable = 0;
 		const Elf32_Dyn *dynamic = (Elf32_Dyn*)lmap->l_ld;
 
