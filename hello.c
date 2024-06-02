@@ -1,10 +1,11 @@
 #if 0
-gcc -DDD2 -no-pie -Os -g -fsanitize=address,undefined -m32 -masm=intel $0 && ./a.out
+gcc -fanalyzer -DDD2 -no-pie -Os -g -fsanitize=address,undefined -m32 -masm=intel $0 && ./a.out
 exit
 #endif
-static void* (*dlsym2)(int zero, const char*);
+static void* (*dlsym2)(void*, const char*);
+//static void (*exit2)(int);
 __attribute__((used)) static void* (*dlsym3)(int zero, const char*);
-static int (*printf2)(const char*, ...);
+//static int (*printf2)(const char*, ...);
 #include "mini.h"
 
 #include <stdio.h>
@@ -24,7 +25,7 @@ static int (*printf2)(const char*, ...);
 static void* dnload_find_symbol(int search);
 static const struct link_map* elf32_get_link_map();
 static const void* elf32_get_dynamic_address_by_tag(const void *dyn, Elf32_Sword tag);
-static int (*puts2)(const char *);
+//static int (*puts2)(const char *);
 //IMPORT(puts, int, const char *);
 
 //SYMBOL(text);
@@ -71,9 +72,16 @@ static int put2(const char *str, size_t len){
 
 int main(){
 
-	dlsym2 = dnload_find_symbol(0x79736c64);
+	//dlsym2 = dnload_find_symbol(0x79736c64);
 	// TODO: find better way to force-use dlsym
 	asm volatile("" :: "r"(&dlsym));
+
+// void (*exit2)(int);
+	//((int(*)(int))pvExample)(5);
+	((void(*)(int))dnload_find_symbol(0x74697865))(42);
+	//((*exit)(int))(dnload_find_symbol(0x74697865))(42);
+	//((*exit)(int))(dnload_find_symbol(0x74697865))(42);
+	__builtin_unreachable();
 	return 42;
 }
 
@@ -143,11 +151,10 @@ static void* loopy(uint32_t volatile numchains, const Elf32_Sym* symtab, const c
 	for(ii = 0; (ii < numchains); ++ii)
 	{
 		const Elf32_Sym* sym = &symtab[ii];
-		const char *name = &strtab[sym->st_name];
 		const int nn = *(int*)&strtab[sym->st_name];
 		#if DD2
-		DN_PRINTF("%d: %s %x %x\n", ii, name, nn, sym);
-		DN_PRINTF("SEARCH %x\n", search);
+		//DN_PRINTF("%d: %s %x %x\n", ii, nam, nn, sym);
+		//DN_PRINTF("SEARCH %x\n", search);
 		#endif
 		void* val = (void*)((const uint8_t*)sym->st_value + (size_t)lmap->l_addr);
 		if(nn == search){
@@ -155,12 +162,15 @@ static void* loopy(uint32_t volatile numchains, const Elf32_Sym* symtab, const c
 			return val;
 		}
 		//printf("n %s\tval %d\tlmap %d\tval %p\n", name,sym->st_value, lmap->l_addr, val);
-
-		//sputs(name);
+		#if 0
+		const char *name = &strtab[sym->st_name];
+		sputs(name);
+		#endif
 		#if DL_DEBUG
 		//printf("%4d: %p %s\n", ii, val, name);
 		#endif
 	}
+	return NULL;
 }
 
 //__attribute__((noinline))
@@ -175,23 +185,41 @@ void* dnload_find_symbol(int search)
 #endif
 	for(;;)
 	{
+		#if 0
 		if(lmap == 0){
 			return 0;
 		}
+		#endif
 		DN_DBG("ITER");
 		DN_PRINTF("NAME: %s (%p)\n", lmap->l_name, lmap);
-		const void* base = lmap->l_addr;
+		//sputs2("\nNAME:"); sputs(lmap->l_name);
+		unsigned int base = lmap->l_addr;
 		const char* strtab;
 		const Elf32_Sym* symtab;
 		uint32_t* hashtable = 0;
 		const Elf32_Dyn *dynamic = (Elf32_Dyn*)lmap->l_ld;
 
 		//DN_PRINTF("HASHpre: %p %p\n", hashtable, 0);
-		for(;;)
+		for(;dynamic->d_tag != DT_NULL;)
 		{
-			int ptr = dynamic->d_un.d_ptr;
-			if(ptr < base)
+			unsigned int ptr = dynamic->d_un.d_ptr;
+			//DN_PRINTF("\n!!!! ptr 1:%x 2:%x base 1:%x 2:%x\n", ptr, 0, base, 0);
+			if(ptr < base){
+				//dbg2("smallptr1");
+				//dbg2("smallptr");
 				ptr = ptr + base;
+			} 
+			/*
+			if(ptr2 < base2){
+				dbg2("smallptr2");
+				ptr2 = ptr2 + base2;
+			}
+			if(ptr != ptr2){
+				dbg2("MISMATCH PTR");
+			} else {
+				dbg2("MATCH PTR");
+			}
+			*/
 
 			//printf("mmm %p %d\n", ptr, dynamic->d_tag);
 			switch (dynamic->d_tag){
@@ -205,15 +233,11 @@ void* dnload_find_symbol(int search)
 					break;
 				case DT_HASH:
 					DN_DBG("!!!!hash");
-					hashtable = (const uint32_t*)ptr;
+					hashtable = (uint32_t*)ptr;
 					break;
-				case DT_NULL:
-					DN_DBG("END");
-					goto end;
 			}
 			++dynamic;
 		}
-		end:
 		DN_PRINTF("STRTAB: %p %p\n", strtab, elf32_get_library_dynamic_section(lmap, DT_STRTAB));
 		DN_PRINTF("SYMTAB: %p %p\n", symtab, elf32_get_library_dynamic_section(lmap, DT_SYMTAB));
 		DN_PRINTF("HASH:   %p %p\n", hashtable, elf32_get_library_dynamic_section(lmap, DT_HASH));
