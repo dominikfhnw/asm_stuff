@@ -17,11 +17,14 @@ static size_t mystrlen(const char *s)
 	return s-a;
 }
 
-static void sputs(const char *s){
+static void sputs2(const char *s){
 	size_t n = mystrlen(s);
-	char* nl = "\n";
 	syscall3(SYS_write, STDERR_FILENO, (int)s, n);
-	syscall3(SYS_write, STDERR_FILENO, (int)nl, 1);
+}
+
+static void sputs(const char *s){
+	sputs2(s);
+	sputs2("\n");
 }
 
 static int put(const char *s, size_t n){
@@ -74,6 +77,22 @@ static int put(const char *s, size_t n){
 		"int 0x80\n"\
 		DBG_OP(STRING) : "eax", "ebx", "ecx", "edx"\
 	);
+
+
+#define dbg4(STRING) {\
+		asm volatile("STARTDBG%=:\n" :::);\
+		int ret = DBG_SYSCALL;\
+		asm volatile(\
+		"call DBG%=\n"\
+		".ascii \""\
+		STRING\
+		"\\n\"\n"\
+		"DBG%=: pop ecx\n"\
+		"int 0x80\n"\
+		"ENDDBG%=:\n"\
+		: "+a"(ret) : "b"(DBG_FD), "d"(DBG_LEN(STRING))\
+		: "ecx"\
+	); }\
 
 
 #define dbg(STR) sputs(STR "\n")
