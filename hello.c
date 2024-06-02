@@ -185,7 +185,7 @@ void* dnload_find_symbol(int search)
 #endif
 	for(;;)
 	{
-		#if 0
+		#if SAFER
 		if(lmap == 0){
 			return 0;
 		}
@@ -193,35 +193,16 @@ void* dnload_find_symbol(int search)
 		DN_DBG("ITER");
 		DN_PRINTF("NAME: %s (%p)\n", lmap->l_name, lmap);
 		//sputs2("\nNAME:"); sputs(lmap->l_name);
-		unsigned int base = lmap->l_addr;
+		const unsigned int base = lmap->l_addr;
 		const char* strtab;
 		const Elf32_Sym* symtab;
-		uint32_t* hashtable = 0;
+		const uint32_t* hashtable = 0;
 		const Elf32_Dyn *dynamic = (Elf32_Dyn*)lmap->l_ld;
 
 		//DN_PRINTF("HASHpre: %p %p\n", hashtable, 0);
 		for(;dynamic->d_tag != DT_NULL;)
 		{
-			unsigned int ptr = dynamic->d_un.d_ptr;
-			//DN_PRINTF("\n!!!! ptr 1:%x 2:%x base 1:%x 2:%x\n", ptr, 0, base, 0);
-			if(ptr < base){
-				//dbg2("smallptr1");
-				//dbg2("smallptr");
-				ptr = ptr + base;
-			} 
-			/*
-			if(ptr2 < base2){
-				dbg2("smallptr2");
-				ptr2 = ptr2 + base2;
-			}
-			if(ptr != ptr2){
-				dbg2("MISMATCH PTR");
-			} else {
-				dbg2("MATCH PTR");
-			}
-			*/
-
-			//printf("mmm %p %d\n", ptr, dynamic->d_tag);
+			const unsigned int ptr = dynamic->d_un.d_ptr < base ? dynamic->d_un.d_ptr + base : dynamic->d_un.d_ptr;
 			switch (dynamic->d_tag){
 				case DT_STRTAB:
 					DN_DBG("strtab");
@@ -233,7 +214,7 @@ void* dnload_find_symbol(int search)
 					break;
 				case DT_HASH:
 					DN_DBG("!!!!hash");
-					hashtable = (uint32_t*)ptr;
+					hashtable = (const uint32_t*)ptr;
 					break;
 			}
 			++dynamic;
