@@ -2,15 +2,15 @@ ENTRY(_start)
 
 PHDRS
 {
-interp PT_INTERP;
 text PT_LOAD FILEHDR PHDRS;
 dynamic PT_DYNAMIC;
+interp PT_INTERP;
 }
 
 SECTIONS
 {
   /* Read-only sections, merged into text segment: */
-  PROVIDE (__executable_start = SEGMENT_START("text-segment", 0x400000));
+  PROVIDE (__executable_start = SEGMENT_START("text-segment", 0x10000));
   . = __executable_start + SIZEOF_HEADERS;
   .interp         : { *(.interp) } :text :interp
   .rela.init      : { *(.rela.init) }
