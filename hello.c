@@ -73,9 +73,6 @@ static int put2(const char *str, size_t len){
 int main(){
 
 	//dlsym2 = dnload_find_symbol(0x79736c64);
-	// TODO: find better way to force-use dlsym
-	asm("" :: "r"(&dlsym));
-
 // void (*exit2)(int);
 	//((int(*)(int))pvExample)(5);
 	((void(*)(int))dnload_find_symbol(0x74697865))(42);

@@ -22,13 +22,11 @@ __attribute__ ((noreturn,always_inline)) static void _exit(int status){
 	__builtin_unreachable();
 }
 
-/*
-static int printf(const char *string, ...){
-
-	IMPORT_STACK(printf, int, const char *, ...);
+// fake function in a section that gets deleted anyway, just so that
+// the compiler believes us that we are in fact a dynamic executable
+__attribute__ ((used, section(".got.plt"), optimize("-O0"))) void fake(){
+	void* ptr = &dlsym;
 }
-*/
-
 
 // DEFINITION OF MAIN()
 
