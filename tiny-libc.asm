@@ -63,7 +63,7 @@ _start:		push	byte 42
 		call	[exit_ptr]
 	times 2 db	FILL
 		dw	phdrsize			;   e_phentsize
-		dw	20				;   e_phnum
+		dw	3				;   e_phnum
 
 ;; The interpreter segment
 
@@ -83,7 +83,6 @@ strtabsize equ $ - strtab
 
 ;; The program segment header table, hash table, symbol table, and
 ;; dynamic section.
-align 4
 
 phdr:							; Elf32_Phdr
 		dd	PT_LOAD				;   p_type
