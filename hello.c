@@ -146,14 +146,14 @@ static const void* elf32_get_library_dynamic_section(const struct link_map *lmap
 }
 
 static void* loopy(uint32_t volatile numchains, const Elf32_Sym* symtab, const char* strtab, const struct link_map* lmap, int search){
-	DN_PRINTF("loopy: num:%x sym:0x%x str:0x%x lmap:0x%x\n", numchains, symtab, strtab, lmap);
-	uint32_t ii;
-	for(ii = 0; (ii < numchains); ++ii)
+	DN_PRINTF("loopy: num:%u sym:0x%x str:0x%x lmap:0x%x\n", numchains, symtab, strtab, lmap);
+	uint32_t ii = numchains;
+	while(ii > 0)
 	{
-		const Elf32_Sym* sym = &symtab[ii];
+		const Elf32_Sym* sym = &symtab[--ii];
 		const int nn = *(int*)&strtab[sym->st_name];
 		#if DD2
-		//DN_PRINTF("%d: %s %x %x\n", ii, nam, nn, sym);
+		DN_PRINTF("%d: %x\n", ii, nn);
 		//DN_PRINTF("SEARCH %x\n", search);
 		#endif
 		void* val = (void*)((const uint8_t*)sym->st_value + (size_t)lmap->l_addr);
