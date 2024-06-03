@@ -1,5 +1,5 @@
 #if 0
-gcc -fanalyzer -DDD2 -no-pie -Os -g -fsanitize=address,undefined -m32 -masm=intel $0 && ./a.out
+gcc -Wall -Wextra -Wpedantic -fanalyzer -DDD2 -no-pie -Os -g -fsanitize=address,undefined -m32 -masm=intel $0 && ./a.out
 exit
 #endif
 static void* (*dlsym2)(void*, const char*);
@@ -74,7 +74,7 @@ int main(){
 
 	//dlsym2 = dnload_find_symbol(0x79736c64);
 	// TODO: find better way to force-use dlsym
-	asm volatile("" :: "r"(&dlsym));
+	asm("" :: "r"(&dlsym));
 
 // void (*exit2)(int);
 	//((int(*)(int))pvExample)(5);
@@ -145,8 +145,8 @@ static const void* elf32_get_library_dynamic_section(const struct link_map *lmap
 	return f;
 }
 
-static void* loopy(uint32_t volatile numchains, const Elf32_Sym* symtab, const char* strtab, const struct link_map* lmap, int search){
-	DN_PRINTF("loopy: num:%u sym:0x%x str:0x%x lmap:0x%x\n", numchains, symtab, strtab, lmap);
+static void* loopy(uint32_t volatile numchains, const Elf32_Sym* symtab, const char* strtab, const unsigned int base, int search){
+	DN_PRINTF("loopy: num:%u sym:0x%x str:0x%x base:0x%x\n", numchains, symtab, strtab, base);
 	uint32_t ii = numchains;
 	while(ii > 0)
 	{
@@ -156,7 +156,7 @@ static void* loopy(uint32_t volatile numchains, const Elf32_Sym* symtab, const c
 		DN_PRINTF("%d: %x\n", ii, nn);
 		//DN_PRINTF("SEARCH %x\n", search);
 		#endif
-		void* val = (void*)((const uint8_t*)sym->st_value + (size_t)lmap->l_addr);
+		void* val = (void*)((const uint8_t*)sym->st_value + (size_t)base);
 		if(nn == search){
 			DN_DBG("found");
 			return val;
@@ -219,15 +219,15 @@ void* dnload_find_symbol(int search)
 			}
 			++dynamic;
 		}
-		DN_PRINTF("STRTAB: %p %p\n", strtab, elf32_get_library_dynamic_section(lmap, DT_STRTAB));
-		DN_PRINTF("SYMTAB: %p %p\n", symtab, elf32_get_library_dynamic_section(lmap, DT_SYMTAB));
-		DN_PRINTF("HASH:   %p %p\n", hashtable, elf32_get_library_dynamic_section(lmap, DT_HASH));
+		DN_PRINTF("STRTAB: %p %p\n", strtab,    elf32_get_library_dynamic_section(lmap, DT_STRTAB));
+		DN_PRINTF("SYMTAB: %p %p\n", symtab,    elf32_get_library_dynamic_section(lmap, DT_SYMTAB));
+		DN_PRINTF("HASH  : %p %p\n", hashtable, elf32_get_library_dynamic_section(lmap, DT_HASH));
 		if(hashtable == 0){
 			DN_DBG("EMPTY HASH");
 			goto next;
 		}
 		uint32_t volatile numchains = hashtable[1]; /* Number of symbols. */
-		void *ptr = loopy(numchains, symtab, strtab, lmap, search);
+		void *ptr = loopy(numchains, symtab, strtab, base, search);
 		if(ptr != NULL)
 			return ptr;
 		next: lmap = lmap->l_next;
