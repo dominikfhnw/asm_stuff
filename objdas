@@ -1,0 +1,17 @@
+#!/bin/bash
+set -ue
+FILE=${1}
+
+# no interference from translations, please
+export LC_ALL=C
+
+arch=$(objdump -f "${FILE}" | sed -n '/^architecture: /{s///;s/,.*//p}')
+addr=$(objdump -f "${FILE}" | sed -n '/^start address /{s///p}')
+load=$(objdump -p "${FILE}" | sed -En '/^\s+LOAD /{s///;N;s/\n//;s/ ([vpafm])/\n\1/g;/x$/p}')
+off=$(echo "$load" | sed -n '/^off  */{s///p}')
+vaddr=$(echo "$load" | sed -n '/^vaddr  */{s///p}')
+filesz=$(echo "$load" | sed -n '/^filesz  */{s///p}')
+
+echo "arch $arch addr $addr off $off vaddr $vaddr filesz $filesz"
+set -x
+objdump -b binary -m "$arch" -D --adjust-vma="$vaddr" --start-address="$addr" --stop-address="$(( vaddr + filesz ))" "$FILE" 
