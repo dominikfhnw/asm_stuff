@@ -1,7 +1,41 @@
-/* compilers that only implement a subset of C */
+#define NOHEADERS
+#ifndef NOHEADERS
+#include <stddef.h>
+#else
+
+#if __M2__
+typedef SCM size_t;
+#elif __MESC__
+
+
+//#ifndef __MES_SIZE_T
+#define __MES_SIZE_T
+typedef unsigned long size_t;
+//#endif
+
+
+#else
+typedef __SIZE_TYPE__ size_t;
+#endif
+
+#if __linux__
+#if __i386__
+#define __NR_exit 1
+#define __NR_write 4
+#elif __x86_64__
+#define __NR_exit 60
+#define __NR_write 1
+#endif
+#endif
+
+
+#endif
+
+
+/* compilers that only implement a subset of C99 */
 #if __M2__
 #define SUBC 1
-#if 1
+#if !__i386__
 #include <stdlib.h>
 #else
 #define M2_DIRECT 1
@@ -14,7 +48,7 @@
 #endif
 
 #if !__M2__ && defined(__has_builtin)
-#  define HAS_BUILTIN(builtin) __has_builtin(builtin)
+#define HAS_BUILTIN(builtin) __has_builtin(builtin)
 #else
 #define HAS_BUILTIN(builtin) (0)
 #endif
@@ -30,7 +64,9 @@ void noop(){}
 #  endif
 #endif
 
-#if HAS_BUILTIN(__builtin_strlen)
+#if HAS_BUILTIN(strlen)
+#  define STRLEN strlen
+#elif HAS_BUILTIN(__builtin_strlen)
 #  define STRLEN __builtin_strlen
 #else
 #  define STRLEN mystrlen
@@ -52,17 +88,9 @@ void noop(){}
 #define ARG2 "d"
 #endif
 
-//#include <stddef.h>
-//#include <sys/types.h>
-#ifdef size_t
+#define MAIN int main
+
 typedef size_t native;
-#elif __M2__
-typedef SCM native;
-#elif SUBC
-typedef unsigned long int native;
-#else
-typedef __SIZE_TYPE__ native;
-#endif
 
 /* Un*x */
 void _exit(int status);
@@ -70,7 +98,13 @@ void _exit(int status);
 void _Exit(int status);
 /* K&R */
 void exit(int status);
-//ssize_t write(int fd, const void *buf, size_t count);
+/* K&R */
+/*
+ Note: Clang is a lying jerk about having a __builtin_strlen function - 
+ it is merely an alias for strlen. So we have to do this forward declaration
+ so that it doesn't complain about its own lie
+*/
+size_t strlen(const char *s);
 
 /* mesCC/M2-Planet do not support complicated ifs */
 #if !SUBC && __STDC_VERSION__ >= 199901L
@@ -88,14 +122,10 @@ void exit(int status);
 
 #define ASM __asm__ __volatile__
 
-#if !__M2__ && ( defined(__x86_64__) || defined(__i386__) )
+#if !SUBC && ( defined(__x86_64__) || defined(__i386__) )
 
 #define HAS_ASM 1
-#if SUBC
-#define ASM_EXTENDED 0
-#else
-#define ASM_EXTENDED 0
-#endif
+#define ASM_EXTENDED 1
 
 #else
 #define HAS_ASM 0
@@ -118,7 +148,9 @@ void exit(int status);
 #endif
 
 #if ASM_EXTENDED
+#ifndef __NR_exit
 #include <asm/unistd.h>
+#endif
 
 INLINE native syscall1(native nr, native arg0){
 	native ret;
@@ -138,9 +170,18 @@ INLINE native syscall3(native nr, native arg0, native arg1, native arg2){
 	return ret;
 }
 
-
 NORETURN exit_syscall(int status){
 	syscall1(__NR_exit, status);
+	BUILTIN_UNREACHABLE();
+}
+
+NORETURN exit_zero_syscall(){
+	ASM(	"xor %eax, %eax\n"
+		"xor %ebx, %ebx\n"
+		"inc %eax\n"
+		"int $0x80"
+	);
+	BUILTIN_UNREACHABLE();
 }
 #endif
 
@@ -177,10 +218,13 @@ NORETURN exit_wrap(int status){
 #endif
 }
 
-NORETURN exit0(){
+NORETURN exit_zero(){
 	exit_wrap(0);
 }
 
+NORETURN exit_fail(){
+	exit_wrap(1);
+}
 
 NORETURN end_process(){
 #if HAS_ASM && defined(__x86_64__)
@@ -192,7 +236,7 @@ NORETURN end_process(){
 #elif HAS_BUILTIN(__builtin_trap)
 	__builtin_trap();
 #else
-	exit0();
+	exit_zero();
 #endif
 }
 
@@ -203,22 +247,32 @@ INLINE native mystrlen(const char *s)
 	return s-a;
 }
 
+/* Those are not in the C99 list of acceptable freestanding headers, so
+   don't include them if we don't need them */
+#if ASM_EXTENDED
+#elif UNIX
+#include <sys/types.h>
+ssize_t write(int fd, const void *buf, size_t count);
+#else
+#include <stdio.h>
+#endif
+
 INLINE void stderr_write(const char *s){
 #if ASM_EXTENDED
 	native n = STRLEN(s);
 	syscall3(__NR_write, STDERR_FILENO, (native)s, n);
 #elif UNIX
-#if !M2_DIRECT
-/* #include <unistd.h> */
-#endif
-	//write(STDERR_FILENO, s, STRLEN(s));
+	write(STDERR_FILENO, s, STRLEN(s));
 #else
-#include <stdio.h>
 	fputs(s, stderr);
 #endif
 }
 
-int main(){
+MAIN(){
 	stderr_write("hello world\n");
-	end_process();
+#if 0
+	exit_zero_syscall();
+#else
+	exit_zero();
+#endif
 }
