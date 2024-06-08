@@ -1,4 +1,4 @@
-#define NOHEADERS
+//#define NOHEADERS
 #ifndef NOHEADERS
 #include <stddef.h>
 #else
@@ -6,13 +6,11 @@
 #if __M2__
 typedef SCM size_t;
 #elif __MESC__
-
-
-//#ifndef __MES_SIZE_T
+/* this seems to get parsed specially */
+#ifndef __MES_SIZE_T
 #define __MES_SIZE_T
 typedef unsigned long size_t;
-//#endif
-
+#endif
 
 #else
 typedef __SIZE_TYPE__ size_t;
@@ -28,14 +26,13 @@ typedef __SIZE_TYPE__ size_t;
 #endif
 #endif
 
-
 #endif
 
 
 /* compilers that only implement a subset of C99 */
 #if __M2__
 #define SUBC 1
-#if !__i386__
+#if NOASM || !__i386__
 #include <stdlib.h>
 #else
 #define M2_DIRECT 1
@@ -69,7 +66,7 @@ void noop(){}
 #elif HAS_BUILTIN(__builtin_strlen)
 #  define STRLEN __builtin_strlen
 #else
-#  define STRLEN mystrlen
+#define STRLEN mystrlen
 #endif
 
 #ifndef STDERR_FILENO
@@ -122,7 +119,7 @@ size_t strlen(const char *s);
 
 #define ASM __asm__ __volatile__
 
-#if !SUBC && ( defined(__x86_64__) || defined(__i386__) )
+#if !NOASM && !SUBC && ( defined(__x86_64__) || defined(__i386__) )
 
 #define HAS_ASM 1
 #define ASM_EXTENDED 1
@@ -152,6 +149,8 @@ size_t strlen(const char *s);
 #include <asm/unistd.h>
 #endif
 
+#define RETURN_FAIL __NR_exit
+
 INLINE native syscall1(native nr, native arg0){
 	native ret;
 	ASM(
@@ -175,14 +174,39 @@ NORETURN exit_syscall(int status){
 	BUILTIN_UNREACHABLE();
 }
 
-NORETURN exit_zero_syscall(){
-	ASM(	"xor %eax, %eax\n"
-		"xor %ebx, %ebx\n"
-		"inc %eax\n"
-		"int $0x80"
+NORETURN exit_nonzero_syscall(){
+	native junk1;
+	native junk2;
+	ASM(
+		"push %[nr]\n" 
+		"pop %0\n" 
+		"mov %0, %1\n" 
+		SYSCALL
+		: "=a" (junk1), "=" ARG0 (junk2) : [nr] "i" (__NR_exit)
 	);
 	BUILTIN_UNREACHABLE();
 }
+
+
+NORETURN exit_zero_syscall(){
+	native junk1;
+	native junk2;
+	ASM(
+		"push %[nr]\n" 
+		"pop %0\n" 
+		"xor %k1, %k1 # automatically extended to 64bit on AMD64\n" 
+		SYSCALL
+		: "=a" (junk1), "=" ARG0 (junk2) : [nr] "i" (__NR_exit)
+	);
+	BUILTIN_UNREACHABLE();
+}
+
+INLINE native write_syscall(int fd, const void* buf, size_t count){
+	return syscall3(__NR_write, fd, (native)buf, count);
+}
+INLINE native write(int fd, const void* buf, size_t count) __attribute__((alias("write_syscall"))); 
+#else
+#define RETURN_FAIL 1
 #endif
 
 #if M2_DIRECT
@@ -222,8 +246,8 @@ NORETURN exit_zero(){
 	exit_wrap(0);
 }
 
-NORETURN exit_fail(){
-	exit_wrap(1);
+NORETURN exit_nonzero(){
+	exit_wrap(RETURN_FAIL);
 }
 
 NORETURN end_process(){
@@ -258,10 +282,9 @@ ssize_t write(int fd, const void *buf, size_t count);
 #endif
 
 INLINE void stderr_write(const char *s){
-#if ASM_EXTENDED
-	native n = STRLEN(s);
-	syscall3(__NR_write, STDERR_FILENO, (native)s, n);
-#elif UNIX
+#if ASM_EXTENDED || UNIX
+//	syscall3(__NR_write, STDERR_FILENO, (native)s, STRLEN(s));
+//#elif UNIX
 	write(STDERR_FILENO, s, STRLEN(s));
 #else
 	fputs(s, stderr);
@@ -269,8 +292,31 @@ INLINE void stderr_write(const char *s){
 }
 
 MAIN(){
-	stderr_write("hello world\n");
-#if 0
+	{
+		char* string;
+		ASM(
+			"call 1f\n"
+			".ascii \""
+			"hello world"
+			"\\n\"\n"
+			"1: pop %0\n"
+			: "=r" (string)
+		);
+		write(STDERR_FILENO, string, 12);
+	}
+	{
+		__label__ string, code;
+		asm goto(""::::string);
+		goto *&&code;
+		string: ASM(
+			".ascii \""
+			"hello world"
+			"\\n\"\n"
+		);
+		code:
+		write(STDERR_FILENO, &&string, 12);
+	}
+#if 1
 	exit_zero_syscall();
 #else
 	exit_zero();
