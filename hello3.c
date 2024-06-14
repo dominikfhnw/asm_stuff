@@ -51,13 +51,12 @@ typedef __SIZE_TYPE__ size_t;
 #endif
 
 #if SUBC
-void noop(){}
-#define BUILTIN_UNREACHABLE noop
+#define UNREACHABLE
 #else
 #  if HAS_BUILTIN(__builtin_unreachable)
-#    define BUILTIN_UNREACHABLE() __builtin_unreachable()
+#    define UNREACHABLE __builtin_unreachable();
 #  else
-#    define BUILTIN_UNREACHABLE() 
+#    define UNREACHABLE 
 #  endif
 #endif
 
@@ -72,20 +71,34 @@ void noop(){}
 #ifndef STDERR_FILENO
 #define STDERR_FILENO 2
 #endif
+#ifndef STDOUT_FILENO
+#define STDOUT_FILENO 1
+#endif
 
 #if defined(__x86_64__)
-#define SYSCALL "syscall"
+#define SYSCALL "syscall\n"
 #define ARG0 "D"
 #define ARG1 "S"
 #define ARG2 "d"
 #elif defined(__i386__)
-#define SYSCALL "int $0x80"
+#define SYSCALL "int $0x80\n"
 #define ARG0 "b"
 #define ARG1 "c"
 #define ARG2 "d"
 #endif
 
+#if defined(__GNUC__) && !defined(__llvm__) && !defined(__INTEL_COMPILER)
+#define REALLY_GCC
+#define GCCATTR externally_visible, naked
+#else
+#define GCCATTR
+#endif
+
+#if 0
 #define MAIN int main
+#else
+#define MAIN __attribute__((used, GCCATTR)) void _start
+#endif
 
 typedef size_t native;
 
@@ -94,7 +107,7 @@ void _exit(int status);
 /* C99 */
 void _Exit(int status);
 /* K&R */
-void exit(int status);
+//void exit(int status);
 /* K&R */
 /*
  Note: Clang is a lying jerk about having a __builtin_strlen function - 
@@ -171,7 +184,7 @@ INLINE native syscall3(native nr, native arg0, native arg1, native arg2){
 
 NORETURN exit_syscall(int status){
 	syscall1(__NR_exit, status);
-	BUILTIN_UNREACHABLE();
+	UNREACHABLE
 }
 
 NORETURN exit_nonzero_syscall(){
@@ -184,7 +197,7 @@ NORETURN exit_nonzero_syscall(){
 		SYSCALL
 		: "=a" (junk1), "=" ARG0 (junk2) : [nr] "i" (__NR_exit)
 	);
-	BUILTIN_UNREACHABLE();
+	UNREACHABLE
 }
 
 
@@ -198,13 +211,25 @@ NORETURN exit_zero_syscall(){
 		SYSCALL
 		: "=a" (junk1), "=" ARG0 (junk2) : [nr] "i" (__NR_exit)
 	);
-	BUILTIN_UNREACHABLE();
+	UNREACHABLE
 }
 
-INLINE native write_syscall(int fd, const void* buf, size_t count){
-	return syscall3(__NR_write, fd, (native)buf, count);
+NORETURN exit_dontcare_syscall(){
+	native junk1;
+	ASM(
+		"push %[nr]\n" 
+		"pop %0\n" 
+		SYSCALL
+		: "=a" (junk1) : [nr] "i" (__NR_exit)
+	);
+	UNREACHABLE
 }
-INLINE native write(int fd, const void* buf, size_t count) __attribute__((alias("write_syscall"))); 
+
+INLINE const void* write_syscall(int fd, const void* buf, size_t count){
+	return (const void*)syscall3(__NR_write, fd, (native)buf, count);
+}
+
+INLINE const void* write(int fd, const void* buf, size_t count) __attribute__((alias("write_syscall"))); 
 #else
 #define RETURN_FAIL 1
 #endif
@@ -234,29 +259,45 @@ NORETURN exit_func(int status){
 #endif
 }
 
+#define MICROOPTIMIZE 0
+#if MICROOPTIMIZE
+#define CONSTANT_OPTIMIZE(status) __builtin_constant_p(status)
+#else
+#define CONSTANT_OPTIMIZE(status) (0)
+#endif
+
 NORETURN exit_wrap(int status){
 #if ASM_EXTENDED
-	exit_syscall(status);
+	if(CONSTANT_OPTIMIZE(status)){
+		if(status == 0){
+			exit_zero_syscall();
+		}else{
+			exit_syscall(status);
+		}
+	} else {
+		exit_syscall(status);
+	}
 #else
 	exit_func(status);
 #endif
 }
-
-NORETURN exit_zero(){
-	exit_wrap(0);
-}
+NORETURN exit(int status) __attribute__((alias("exit_wrap"))); 
 
 NORETURN exit_nonzero(){
+#if ASM_EXTENDED
+	exit_nonzero_syscall();
+#else
 	exit_wrap(RETURN_FAIL);
+#endif
 }
 
 NORETURN end_process(){
 #if HAS_ASM && defined(__x86_64__)
 	ASM(".byte 6");
-	BUILTIN_UNREACHABLE();
+	UNREACHABLE
 #elif HAS_ASM && defined(__i386__)
 	ASM("hlt");
-	BUILTIN_UNREACHABLE();
+	UNREACHABLE
 #elif HAS_BUILTIN(__builtin_trap)
 	__builtin_trap();
 #else
@@ -283,42 +324,229 @@ ssize_t write(int fd, const void *buf, size_t count);
 
 INLINE void stderr_write(const char *s){
 #if ASM_EXTENDED || UNIX
-//	syscall3(__NR_write, STDERR_FILENO, (native)s, STRLEN(s));
-//#elif UNIX
 	write(STDERR_FILENO, s, STRLEN(s));
 #else
 	fputs(s, stderr);
 #endif
 }
+#define inline_string(name, value) \
+	char* name;\
+	ASM(\
+		"istart%=: call inline%=\n"\
+		".ascii \""\
+		value\
+		"\\n\"\n"\
+		"inline%=: pop %0\n"\
+		"# mov inline%= - istart%= - 5, %%edx\n"\
+		: "=r" (name)\
+	)
+
+#define puts_inline(string) {\
+	inline_string(puts, string);\
+	write(STDOUT_FILENO, puts, __builtin_strlen(string)+1);\
+}
+#define dbg_inline(string) {\
+	inline_string(dbg, string);\
+	write(STDERR_FILENO, dbg, __builtin_strlen(string)+1);\
+}
+//#include <alloca.h>
+INLINE native isvm(){
+	native featc;
+	native leaf = 1;
+	//char* o = alloca(12);
+	ASM(
+		"xor %%eax, %%eax\n"
+		"inc %%eax\n"
+		"pusha\n"
+		"cpuid\n"
+		"and %%ecx, %%ecx\n"
+		"popa\n"
+		"js 1f\n"
+		"inc %%ebx\n"
+		"1:\n"
+		SYSCALL
+	: "+a"(leaf), "=c"(featc) ::"bx","dx","memory");
+	return featc >> 31;
+}
+	
+NORETURN cpuid6(){
+	ASM(
+		//"xor %%eax, %%eax\n"		// manufacturer
+		"cpuid\n"
+		"pusha\n"
+		"mov %%esp, %%ecx\n"		// write
+		"add $16, %%ecx\n"
+		"push $4\n"
+		"pop %%eax\n"
+		"push $1\n"
+		"pop %%ebx\n"
+		"push $12\n"
+		"pop %%edx\n"
+		SYSCALL
+		"xchg %%ebx, %%eax\n"
+		"xor %%ebx, %%ebx\n"
+		SYSCALL
+	::: "memory", "ax","bx","cx","dx");
+	UNREACHABLE
+}
+NORETURN cpuid5(){
+	ASM(
+		"push $0xa\n"			// processor
+		"mov $0x80000004, %%esi\n"
+		"1: mov %%esi, %%eax\n"
+		"cpuid\n"
+		"push %%edx\n"
+		"push %%ecx\n"
+		"push %%ebx\n"
+		"push %%eax\n"
+		"dec %%esi\n"
+		"cmp $1, %%si\n"
+		"jg 1b\n"
+		"mov $0x203a500a, %%edi\n"
+		"push %%edi\n"
+		"xor %%eax, %%eax\n"		// manufacturer
+		"cpuid\n"
+		"push %%ecx\n"
+		"push %%edx\n"
+		"push %%ebx\n"
+		"mov $0x4d0a, %%di\n"
+		"push %%edi\n"
+		"mov %%esi, %%eax\n"		// hypervisor
+		"shr $1, %%eax\n"
+		"cpuid\n"
+		"push %%edx\n"
+		"push %%ecx\n"
+		"push %%ebx\n"
+		"mov $0x5648, %%di\n"
+		"push %%edi\n"
+		"mov %%esp, %%ecx\n"		// write
+		"push $4\n"
+		"pop %%eax\n"
+		//"movzx %%si, %%ebx\n"
+		"push $1\n"
+		"pop %%ebx\n"
+		"push $0x55\n"
+		"pop %%edx\n"
+		SYSCALL
+		"xchg %%ebx, %%eax\n"
+		"xor %%ebx, %%ebx\n"
+		SYSCALL
+	::: "memory", "ax","bx","cx","dx");
+	UNREACHABLE
+}
+
+INLINE void cpuid4(native mode){
+	native junk1;
+	const void* sp;
+	//char* o = alloca(12);
+	ASM(
+		"cpuid\n"
+		"push %%edx\n"
+		"push %%ecx\n"
+		"push %%ebx\n"
+		"push %%eax\n"
+		"mov %%esp, %0\n"
+	: "=b,c,d"(sp), "=c,d,b"(junk1), "=d,b,c"(junk1) : "a,a,a"(mode) :"memory");
+	//: "+S"(sp), "=b"(junk1), "=c"(junk2), "=d"(junk3) : "a"(mode) :"memory");
+	write(1, sp, 16);
+}
+
+INLINE void cpuid3(native mode){
+	native junk1;
+	const void* sp;
+	//char* o = alloca(12);
+	ASM(
+		"cpuid\n"
+		"push %%edx\n"
+		"push %%ecx\n"
+		"push %%ebx\n"
+		"mov %%esp, %0\n"
+	: "=b,c,d"(sp), "=c,d,b"(junk1), "=d,b,c"(junk1) : "a,a,a"(mode) :"memory");
+	//: "+S"(sp), "=b"(junk1), "=c"(junk2), "=d"(junk3) : "a"(mode) :"memory");
+	write(1, sp, 12);
+}
+
+INLINE void cpuid2(native mode){
+	native junk1;
+	const void* sp;
+	//char* o = alloca(12);
+	ASM(
+		"cpuid\n"
+		"push %%ecx\n"
+		"push %%edx\n"
+		"push %%ebx\n"
+		"mov %%esp, %0\n"
+	: "=b,c,d"(sp), "=c,d,b"(junk1), "=d,b,c"(junk1) : "a,a,a"(mode) :"memory");
+	//: "+S"(sp), "=b"(junk1), "=c"(junk2), "=d"(junk3) : "a"(mode) :"memory");
+	write(1, sp, 12);
+}
+
+INLINE void cpuid(){
+	ASM(
+		"xor %%eax, %%eax\n"
+		"cpuid\n"
+		"push %%ecx\n"
+		"push %%edx\n"
+		"push %%ebx\n"
+		"mov %%esp, %%ecx\n"
+		"push $4\n"
+		"pop %%eax\n"
+		"push $2\n"
+		"pop %%ebx\n"
+		"push $12\n"
+		"pop %%edx\n"
+		SYSCALL
+	//: "=b,c,d"(sp), "=c,d,b"(junk1), "=d,b,c"(junk1) : "a,a,a"(mode) :"memory");
+	::: "memory", "ax","bx","cx","dx");
+	//: "+S"(sp), "=b"(junk1), "=c"(junk2), "=d"(junk3) : "a"(mode) :"memory");
+}
+
+static int main(){
+	//puts_inline("hello world");
+	write(STDOUT_FILENO, "hello world\n", 13);
+	exit(0);
+}
 
 MAIN(){
+#if 0
+	dbg_inline("hello world");
+#else
+	//stderr_write("hello world\n");
+#endif
+	//exit(isvm());
+	/*
+	cpuid(0);
+	write(1, "\n", 1);
+	cpuid3(0x40000000);
+	write(1, "\n", 1);
+	cpuid4(0x80000002);
+	cpuid4(0x80000003);
+	cpuid4(0x80000004);
+	write(1, "\n", 1);
+	*/
+	//cpuid5();
+	exit(42);
+
+
+	/*
 	{
-		char* string;
-		ASM(
-			"call 1f\n"
-			".ascii \""
-			"hello world"
-			"\\n\"\n"
-			"1: pop %0\n"
-			: "=r" (string)
-		);
-		write(STDERR_FILENO, string, 12);
-	}
-	{
-		__label__ string, code;
+		__label__ string;
 		asm goto(""::::string);
-		goto *&&code;
-		string: ASM(
-			".ascii \""
-			"hello world"
-			"\\n\"\n"
-		);
-		code:
+		if(0){
+		string:	ASM(
+				".ascii \""
+				"hello world"
+				"\\n\"\n"
+			);
+		}	
 		write(STDERR_FILENO, &&string, 12);
 	}
-#if 1
-	exit_zero_syscall();
-#else
-	exit_zero();
-#endif
+	*/
+	//native ret = main();
+	#if 1
+	//exit(ret);
+	#else
+	//exit_nonzero();
+	exit(42);
+	#endif
 }
