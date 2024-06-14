@@ -34,6 +34,7 @@ LDFLAGS0=--gc-sections --print-gc-sections -z norelro -z noseparate-code
 LDFLAGS=$(LDFLAGS0) --build-id=none --orphan-handling=warn --script=$(SCRIPT) --print-map
 LDFLAGS+=-z nocopyreloc -V
 
+#CFLAGS_IPXE=-march=i386 -fomit-frame-pointer -fstrength-reduce -falign-jumps=1 -falign-loops=1 -falign-functions=1 -mpreferred-stack-boundary=2 -mregparm=3 -mrtd -freg-struct-return -m32 -fshort-wchar -Os -ffreestanding -fcommon -Wall -W -Wformat-nonliteral  -fno-dwarf2-cfi-asm -fno-exceptions  -fno-unwind-tables -fno-asynchronous-unwind-tables -Wno-address -Wno-stringop-truncation -Wno-address-of-packed-member -ffunction-sections
 #CFLAGS0=-fmodulo-sched -fmerge-all-constants -fipa-pta -fgraphite-identity -floop-nest-optimize -ftree-coalesce-vars -ftree-loop-if-convert -ftree-loop-distribution -floop-interchange -fivopts -fno-align-functions -fallow-store-data-races -ffunction-sections -fdata-sections -fstdarg-opt
 #CFLAGS0=-ffunction-sections -fdata-sections
 #CFLAGS0+=-falign-functions=1 -falign-loops=1 -fomit-frame-pointer
