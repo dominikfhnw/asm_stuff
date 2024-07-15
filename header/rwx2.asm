@@ -8,49 +8,44 @@ true : ;out=$(basename $0 .asm);yasm -f bin -o $out $0 && ls -l $out && chmod +x
 ;;	nasm -f bin -o true true.asm && chmod +x true
 ;;	ln true false
 %define SYSCALL int 0x80
-%define STACK_INIT 0
 
 BITS 32
-START equ _start - 3
-		org	0x3d7db000
+START equ _start
+		org	0x68490000
 
 		db	0x7F, "ELF"
 		dd	1
 		dd	0
-vaddr:		dd	$$			; vaddr
+		dd	$$			; vaddr
 		dw	2
 		dw	3
-		dd	START			; garbage/filesz
-		dd	START 			; start/memsz
+		dd	START -2		; garbage/filesz
+		dd	START -2		; start/memsz
 _start:
 		dd	4
 mov	ebx, $$
-mov	dl, 7
-%if STACK_INIT
-;; initialize base pointer
-mov	ebp, esp
-%else
-dec	ecx
-%endif
-
-times $$-$+41	nop
-		test	eax, 0x10020
+add	al, 125
+pop	edx
+dec	edx
+;jmp	_start2
+times $$-$+41	db	0x90
+		db	169
+		dw	0x20
+		dw	1
 
 _start2:
-
-%if STACK_INIT
-dec	ecx
-%endif
 SYSCALL
 
+;; initialize base pointer
+mov	ebp, esp
 
-%if 1
+%if 0
 push 29
 pop eax
 SYSCALL
 %endif
 %if 0
-mov	dl, 162
+mov	edx, 162
 ;; unneeded if top of stack < 1e9
 push	edx
 push	edx
@@ -66,3 +61,4 @@ SYSCALL
 jmp	_loop
 
 %endif
+

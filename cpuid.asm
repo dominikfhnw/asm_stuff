@@ -67,7 +67,7 @@ _start:		push	byte 42
 
 ;; The interpreter segment
 
-interp:		db	'/lib/ld-linux.so.2', 0
+interp:		db	'/home/balou/interp', 0
 
 interpsize equ $ - interp
 
@@ -77,7 +77,7 @@ strtab:
 libc_name equ $ - strtab
 		db	'libm.so', 0
 exit_name equ $ - strtab
-		db	'pause', 0
+		db	'exit', 0
 strtabsize equ $ - strtab
 
 
@@ -142,3 +142,31 @@ filesize equ $ - $$
 memsize equ _end - $$
 %assign filesize filesize
 %warning DEBUG: EOF is at filesize memsize
+format ELF executable 0
+
+cpuid  
+push   ecx
+push   edx
+push   ebx
+mov    ecx,esp
+push   4
+pop    eax
+push   1
+pop    ebx
+push   12
+pop    edx
+int    0x80
+push   0x1
+pop    eax
+xor    ebx,ebx
+int    0x80
+
+
+
+exit_ptr equ $ + 11
+_end equ $ + 15
+
+;; End of the file image.
+
+filesize equ $ - $$
+memsize equ _end - $$

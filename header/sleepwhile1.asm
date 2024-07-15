@@ -9,10 +9,8 @@ true : ;out=$(basename $0 .asm);yasm -f bin -o $out $0 && ls -l $out && chmod +x
 ;;	ln true false
 
 BITS 32
-START equ _start1
-;START equ _start0 - 3
-		org	0x3d909000
-		;org	0x00001000
+START equ _start
+		org	0x3d490000
 
 		db	0x7F, "ELF"
 		dd	1
@@ -20,18 +18,35 @@ START equ _start1
 		dd	$$			; vaddr
 		dw	2
 		dw	3
-		dd	START 			; garbage/filesz
-		dd	START 			; start/memsz
-_start0:	dd	4
+		dd	START -2		; garbage/filesz
+		dd	START -2		; start/memsz
+_start:
+		dd	4
+add	dl, 3
+mov	ebx, $$
 
-times $$-$+38	nop
-		;; initialize base pointer
-_start1:	mov	ebp, esp
-		jmp	_start2
-
-		;db      169
+jmp	_start2
+times $$-$+42	db	0x90
+		;db	169
 		dw	0x20
 		dw	1
 
 _start2:
-	times 6	nop
+
+
+
+xor	ecx,ecx
+mov	edx, 162
+push	ecx
+push	edx
+mov	ebx,esp
+
+; ecx = 0
+; edx = 162
+; ebx = esp
+_loop:
+mov	eax,edx
+int	0x80
+jmp	_loop
+
+

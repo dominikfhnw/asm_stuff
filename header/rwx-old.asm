@@ -1,4 +1,4 @@
-true : ;out=$(basename $0 .asm);yasm -f bin -o $out $0 && ls -l $out && chmod +x $out && objdas $out && strace -i ./$out; echo ret $?; exit
+true : ;out=$(basename $0 .asm);yasm -f bin -o $out $0 && ls -l $out && chmod +x $out && objdas $out && strace ./$out; echo ret $?; exit
 
 ;; true.asm: Copyright (C) 2001 Brian Raiter <breadbox@muppetlabs.com>
 ;; Licensed under the terms of the GNU General Public License, either
@@ -8,49 +8,38 @@ true : ;out=$(basename $0 .asm);yasm -f bin -o $out $0 && ls -l $out && chmod +x
 ;;	nasm -f bin -o true true.asm && chmod +x true
 ;;	ln true false
 %define SYSCALL int 0x80
-%define STACK_INIT 0
+;%define SYSCALL sysenter
 
 BITS 32
-START equ _start - 3
-		org	0x3d7db000
+START equ _start
+		org	0x3d490000
 
 		db	0x7F, "ELF"
 		dd	1
 		dd	0
-vaddr:		dd	$$			; vaddr
+		dd	$$			; vaddr
 		dw	2
 		dw	3
-		dd	START			; garbage/filesz
-		dd	START 			; start/memsz
+		dd	START -2		; garbage/filesz
+		dd	START -2		; start/memsz
 _start:
 		dd	4
+add	dl, 3
 mov	ebx, $$
-mov	dl, 7
-%if STACK_INIT
-;; initialize base pointer
-mov	ebp, esp
-%else
-dec	ecx
-%endif
 
-times $$-$+41	nop
-		test	eax, 0x10020
+jmp	_start2
+times $$-$+42	db	0x90
+		;db	169
+		dw	0x20
+		dw	1
 
 _start2:
-
-%if STACK_INIT
-dec	ecx
-%endif
+add	al, 125
 SYSCALL
+;int	0
 
-
-%if 1
-push 29
-pop eax
-SYSCALL
-%endif
 %if 0
-mov	dl, 162
+mov	edx, 162
 ;; unneeded if top of stack < 1e9
 push	edx
 push	edx
