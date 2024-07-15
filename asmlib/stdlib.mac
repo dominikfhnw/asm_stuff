@@ -1,0 +1,12 @@
+%pragma preproc sane_empty_expansion
+
+%ifenv %!DEBUG
+%defstr DEBUG %!DEBUG
+%endif
+
+%include "generic.mac"
+%include "elf.mac"
+%include "syscall.mac"
+%include "regdump.mac"
+%include "print.mac"
+

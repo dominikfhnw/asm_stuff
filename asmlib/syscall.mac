@@ -1,0 +1,318 @@
+%ifndef DEBUG
+%define DEBUG 0
+%endif
+
+%define SYS_nanosleep	162
+%define SYS_mprotect	125
+%define SYS_mmap	90
+%define SYS_pause	29
+%define SYS_time	13
+%define SYS_close	6
+%define SYS_open	5
+%define SYS_write	4
+%define SYS_read	3
+%define SYS_fork	2
+%define SYS_exit	1
+
+%define STDIN		0
+%define STDOUT		1
+%define STDERR		2
+
+%imacro sc_param 1-2
+	%ifempty %2
+		;%warning uhoh empty __LINE__, %0 %1 %2, pass __PASS__
+	%elifidn %2,x
+		;%warning uhoh x __LINE__, %0 %1 %2, pass __PASS__
+	%elifidn %2,pop
+		;%warning uhoh pop __LINE__, %0 %1 %2, pass __PASS__
+		pop	%1
+	%else
+		set	%1, %2
+	;%else
+	;	%warning uhoh else __LINE__ %0 %1 %2, pass __PASS__
+	%endif
+%endmacro
+
+%imacro sc_nr 1
+	set	eax, %1
+%endmacro
+
+%idefine sc_exec int 0x80
+
+%imacro sc_param1 1
+	sc_param ebx, %1
+%endmacro
+
+%imacro sc_param2 1
+	sc_param ecx, %1
+%endmacro
+
+%imacro sc_param3 1
+	sc_param edx, %1
+%endmacro
+
+%imacro syscall 1-7
+	sc_nr	%1
+	%if %0 > 1
+		sc_param1 %2
+	%endif
+	%if %0 > 2
+		sc_param2 %3
+	%endif
+	%if %0 > 3
+		sc_param3 %4
+	%endif
+	%if %0 > 4
+		sc_param esi, %5
+	%endif
+	%if %0 > 5
+		sc_param edi, %6
+	%endif
+	%if %0 > 6
+		sc_param ebp, %7
+	%endif
+	sc_exec
+%endmacro
+
+%imacro sleep 1
+	push	0
+	push	%1
+	syscall	SYS_nanosleep, esp
+	pop	ebx
+	pop	ebx
+%endmacro
+
+%imacro time 0
+	syscall SYS_time, 0
+%endmacro
+
+%imacro pause 0
+	syscall SYS_pause
+%endmacro
+
+%imacro mprotect 3
+	syscall SYS_mprotect, %1, %2, %3
+%endmacro
+
+; add an extra param to get the hackish version (-2 bytes)
+%imacro rwx 0-1
+	%if %0 == 0
+		set	ebx, $$
+		lea     ecx, [ebx+START-$$]
+		mprotect ebx, ecx, 7
+	%else
+		mprotect $$, -1, 7
+	%endif
+%endmacro
+
+%imacro mmap 6
+	syscall SYS_mmap, %1, %2, %3, %4, %5, %6
+%endmacro
+
+%imacro exit 0-1 0
+	syscall SYS_exit, %1
+%endmacro
+
+%imacro read 3
+	syscall SYS_read, %1, %2, %3
+%endmacro
+
+%imacro write 3
+	;%warning WWWW uhoh x __LINE__ %0 %1 %2 %3, pass __PASS__
+	syscall SYS_write, %1, %2, %3
+%endmacro
+
+%imacro puts 2
+	write 1, %1, %2
+%endmacro
+
+%imacro inline_str 1
+	call	%%endstr
+	db	%1
+	%%endstr:
+%endmacro
+
+%imacro printstr 1
+	pusha
+	;%strcat string %1, `\n`
+	%strcat string %1
+	%strlen strlen string
+	inline_str string
+	%assign printstr_old reg_keepflags
+	%assign reg_keepflags 1
+	puts	pop, strlen
+	%assign reg_keepflags printstr_old
+	popa
+
+%endmacro
+
+%imacro ddprint 1.nolist
+	pusha
+	pushf
+	printstr %1
+	popf
+	popa
+%endmacro
+
+%macro cpuidstuff 0
+	%if 0
+		;set edi, 0x80000000
+		set edi, 0
+
+		doloop 64
+			push ecx
+			mov eax, ecx
+			add eax, edi
+			mov ebp, ecx
+			add ebp, edi
+
+			;call regdump
+			cpuid
+			call regdump
+			pop ecx
+		endloop
+		mov eax, edi
+		set ebx,12
+		set edx,12
+		cpuid
+		call regdump
+		exit
+	%endif
+%endmacro
+
+%define zerostring 0
+%define printstatic_used 0
+
+%macro printstatic 1
+	%assign printstatic_used printstatic_used+1
+	%if zerostring
+	%strcat string %1, `\0`
+	%else
+	%strcat string %1
+	%endif
+
+	%strlen strlen string
+	call printstatic_func
+	%if zerostring == 0
+	db strlen
+	%endif
+	db string
+	%%endstring:
+%endmacro
+
+; stack:
+; -strlen
+; -return address
+; -flags
+; -registers
+%macro import_printstatic 0
+%warning PRINTSTATIC USED printstatic_used
+printstatic_func:
+%if printstatic_used > 0
+	;%if DEBUG
+		times 8 db 0
+	;%endif
+	pushf
+	pusha
+
+	%defalias set setfz
+
+	%if zerostring == 0
+		; zero: eax, ebx, edx
+		; clobbered: eax,ebx,ecx,edx
+		lahf
+		cpuid
+
+		mov     ecx, 4*9[esp] 
+		;lea	ebx, 4*9[esp] 
+		;add	esp, 4*9
+		;mov     ecx, [esp] 
+		;exit
+		mov     dl, [ecx]
+		inc	ecx
+		;call	regdump
+		puts	ecx, edx
+
+		add     ecx, edx
+		mov     4*9[esp], ecx
+
+		;mov     [esp], edx
+		;sub	esp, 4*9
+		;call	regdump
+		;%undefalias set
+		;exit
+		;db 0xA3, 1, 2, 3, 4, 5, 6
+	%elif 0
+		; zero: eax, ebx, edx
+		lahf
+		cpuid
+
+		lea	esi, 4*9[esp]
+		;push	4*9
+		;pop	esi
+		;add	esi, esp
+		;call	regdump
+		;exit
+
+		mov	edi, [esi]
+		;mov	edi, 4*9[esp]
+		mov	ecx, edi
+		db	0xA8
+		.l:
+		inc	edx
+		scasb
+		jnz	.l
+		puts	ecx, edx
+		;call	regdump
+		;mov	4*9[esp], edi
+		mov	[esi], edi
+
+	%else
+		; zero: eax, ebx, ecx, edx
+		lahf
+		cpuid
+
+		mov	edi, 4*9[esp]
+		push	edi
+		;mov	esi, edi
+		dec	ecx
+		repne	scasb
+		;call	regdump
+
+		sub	edx, ecx
+		dec	edx
+		dec	edx
+		;lea	edx, [ecx+5]
+		;call regdump
+		pop	ecx
+
+		puts ecx, edx
+		mov	4*9[esp], edi
+
+	%endif
+	%undefalias set
+	popa
+	popf
+	ret
+	
+%endif
+%endmacro
+
+%if DEBUG
+%define ddd 
+%else
+%macro ddd 0+
+%endmacro
+%endif
+
+%imacro dprint 1.nolist
+	%if DEBUG
+		%defstr line __LINE__
+		%strcat string "DBG ", __FILE__, ":", line, ": ", %1, `\n`
+		pusha
+		pushf
+		printstr string
+		popf
+		popa
+	%endif
+%endmacro
