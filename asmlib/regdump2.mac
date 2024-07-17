@@ -42,11 +42,11 @@
 
 ;times 8 db 0
 
+rtaint			; we can be called from everywhere
 regdump:
 pusha
 pushf			; save processor state on stack
 
-regdump_nosave:
 %if LABEL || FLAGS
 call	.begin
 .labels:
@@ -149,6 +149,7 @@ doloop	REGS
 	stosb
 	dec	edx
 	%endif
+	taint	eax
 
 	%if SPACE
 	stos	0x20		; whitespace
@@ -172,6 +173,7 @@ doloop	REGS
 	xchg	edx, esi	; back again to description text
 	%endif
 
+	taint eax, ebx, ecx, edx
 	%if NEWLINE
 	stos	0x0a
 	%endif
@@ -201,6 +203,7 @@ puts	esp, TOTAL
 %endif
 popf
 popa
+rtaint ;popa destroys all our assumptions
 ret
 
 %endif
