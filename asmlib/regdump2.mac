@@ -10,6 +10,8 @@
 ; 1byte labels: 25 bytes	+14 bytes
 ; full  labels: 36 bytes	+11 bytes
 
+%define SEPARATE_STACK 1
+
 ; each of those adds 4 byte of code and 1*REGS of stack used
 ;%define SPACE 1
 %define NEWLINE 1
@@ -40,12 +42,30 @@
 ;  A   C   D   B   S   P   s   d   f
 ;hlt
 
-;times 8 db 0
+times 8 db 0
 
 rtaint			; we can be called from everywhere
 regdump:
+%if SEPARATE_STACK
+	; save esp on top of our alternative stack
+	; we can not change any other registers, so we have to
+	; use regdump_stack_top constant twice
+	mov	[regdump_stack_top], esp
+	mov	esp, regdump_stack_top
+	push	esp
+%endif
 pusha
 pushf			; save processor state on stack
+
+%if SEPARATE_STACK
+	; patch the values on the stack for display purposes
+	; ESP
+	mov     esi, [esp+40]
+	mov	dword [esp+16], esi
+	; IP
+	mov	esi, [esi]
+	mov	dword [esp+36], esi
+%endif
 
 %if LABEL || FLAGS
 call	.begin
@@ -113,7 +133,7 @@ cld
 	lodsb
 	xchg	eax, edx
 
-	doloop 12, push
+	doloop 12
 		lodsb
 		ror	ebx, 1
 		;jc	.c
@@ -203,7 +223,20 @@ puts	esp, TOTAL
 %endif
 popf
 popa
+%if SEPARATE_STACK
+	; popa does NOT restore esp, so we have to do it manually
+	; jump over the fake EIP. no pop/pop because we would either
+	; mess up esp or clobber another register
+	mov	esp, [esp+4]
+%endif
 rtaint ;popa destroys all our assumptions
 ret
 
+%if SEPARATE_STACK
+section .bss
+	regdump_stack_bottom:
+	resb TOTAL+48
+	regdump_stack_top:
+	regdump_esp:	resd 1
+%endif
 %endif
