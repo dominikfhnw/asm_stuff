@@ -52,7 +52,6 @@ regdump:
 	; use regdump_stack_top constant twice
 	mov	[regdump_stack_top], esp
 	mov	esp, regdump_stack_top
-	push	esp
 %endif
 pusha
 pushf			; save processor state on stack
@@ -60,11 +59,10 @@ pushf			; save processor state on stack
 %if SEPARATE_STACK
 	; patch the values on the stack for display purposes
 	; ESP
-	mov     esi, [esp+40]
-	mov	dword [esp+16], esi
+	mov     esi, [esp+36]
+	mov	dword [esp+12], esi
 	; IP
-	mov	esi, [esi]
-	mov	dword [esp+36], esi
+	push	dword [esi]
 %endif
 
 %if LABEL || FLAGS
@@ -77,8 +75,11 @@ call	.begin
 	db 10
 	%endif
 	%if LABEL == 2
+	%if IP && SEPARATE_STACK
+	db "IP"
+	%endif
 	db "FLDISIBPSPBXDXCXAX"
-	%if IP
+	%if IP && !SEPARATE_STACK
 	db "IP"
 	%endif
 	%if STACK > 0
@@ -86,8 +87,11 @@ call	.begin
 	%endif
 	;db "fldisibpspbxdxcxax"
 	%elif LABEL == 1
+	%if IP && SEPARATE_STACK
+	db "I"
+	%endif
 	db "fdsPSBDCA"
-	%if IP
+	%if IP && !SEPARATE_STACK
 	db "I"
 	%endif
 	%if STACK > 0
@@ -221,13 +225,16 @@ puts	esp, TOTAL
 %else
 	add	esp, edx
 %endif
+%if SEPARATE_STACK
+	pop	eax
+%endif
 popf
 popa
 %if SEPARATE_STACK
 	; popa does NOT restore esp, so we have to do it manually
 	; jump over the fake EIP. no pop/pop because we would either
 	; mess up esp or clobber another register
-	mov	esp, [esp+4]
+	pop	esp
 %endif
 rtaint ;popa destroys all our assumptions
 ret
