@@ -8,6 +8,8 @@ true : ;nasm -Iasmlib/ -f bin -o print $0 && ls -l print && chmod +x print && ob
 ;;	ln true false
 
 ;START equ _start - 3
+%define START _start - 3
+
 %include "stdlib.mac"
 
 %define REPLACE 0
@@ -15,17 +17,19 @@ true : ;nasm -Iasmlib/ -f bin -o print $0 && ls -l print && chmod +x print && ob
 BASE	0x3d499000
 
 ELF
+	; set ecx to -1
+	;dec	ecx	; encoded in memory address
 	pop	edi	;argc
 	; start of arg/env/aux string area
 	pop	edi
-	push	edi
+	push	edi	;needed later by write syscall
 	; find end of string area marked by a dword == 0
 	repne	scasd
 
 	; ecx contains 0 - (number of doublewords)
 	; multiply by -4 to get number of bytes
-	mov	dl, 10
-	inc	ebx
+	mov	dl, 10	;newline
+	inc	ebx	;STDOUT
 ;reg
 	.strrep:
 	dec	edi
@@ -47,10 +51,10 @@ ELF_PHDR jump
 	pop	ecx
 	mov	al, SYS_write
 	int	0x80
-
-	xchg	eax, ebx
-	sub	ebx, edx
-	int	0x80
+reg
+	;xchg	eax, ebx
+	;sub	ebx, edx
+	;int	0x80
 
 reg
 

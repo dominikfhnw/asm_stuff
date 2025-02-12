@@ -46,7 +46,7 @@ adc	eax,0
 adc	al,0
 adc	ebx,0
 adc	bl,0
-%if 0
+%if 1
 		db	0
 s2:		
 		inc	eax
@@ -61,6 +61,7 @@ s2:
 		xchg	eax, ebx
 
 		int	0x80
+
 %endif
 
 ;3d40002e:       40                      inc    %eax

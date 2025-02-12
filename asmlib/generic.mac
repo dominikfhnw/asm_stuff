@@ -41,6 +41,7 @@
 	%endif
 
 	set	ecx, %1
+	taint	ecx	; ecx changes in the following block with each iteration
 	%$loop:
 %endmacro
 
@@ -56,6 +57,7 @@
 		%pop looppush
 	%else
 		%pop loop
+		rset	ecx, 0
 	%endif
 %endmacro
 
@@ -68,25 +70,207 @@
 %define reg_keepflags 0
 %define reg_stack 1
 %define zero_seg 1
+%assign reg_notneg 0
+
 %imacro zero 1-*
+	%assign zero_eax 0
+	%assign zero_ebx 0
+	%assign zero_ecx 0
+	%assign zero_edx 0
+
+	%assign zero_count 0
 	%rep %0
-		regparse %1	
-		%assign reg_track_type 2
-		%assign reg_track_val 0
-		;%if reg_fromzero == 1
-		%if zero_seg || reg_keepflags
+		%if   %isidn(%1, eax) && reg_eax_val != 0
+			%assign zero_eax 1
+		%elif %isidn(%1, ebx) && reg_ebx_val != 0
+			%assign zero_ebx 1
+		%elif %isidn(%1, ecx) && reg_ecx_val != 0
+			%assign zero_ecx 1
+		%elif %isidn(%1, edx) && reg_edx_val != 0
+			%assign zero_edx 1
+		%endif
+	%rotate 1
+	%endrep
+	
+	findzero
+	%warning findzero reg_zero
+
+	%warning ZERO zero_eax zero_ebx zero_ecx zero_edx
+	%if zero_eax && zero_ebx && zero_ecx && zero_edx
+		%warning zero abcd, using cpuid
+		lahf
+		cpuid				; 3 bytes
+		rset eax, 0
+		rset ebx, 0
+		rset ecx, 0
+		rset edx, 0
+	%elif zero_eax && zero_edx && %isnidn(reg_zero,"")
+		%warning zero ad, using mul reg_zero
+		mul %tok(reg_zero)		; 2 bytes
+		rset eax, 0
+		rset edx, 0
+	%endif
+
+	%rep %0
+		rget	eax
+		%assign eax_notneg reg_notneg
+		rget	%1
+		%if reg_val == 0
+			%warning register %1 already zero
+		%elif %isidn(reg_str,"edx") && eax_notneg
+			%warning zero edx and eax<0x80000000, using cdq
+			cdq
+		%elif zero_seg || reg_keepflags
 			mov	%1, fs
 		%else
 			xor	%1, %1
 		%endif
+		rset %1, 0
 	%rotate 1
 	%endrep
 %endmacro
 
-%define reg_track_eax_val	-1
-%define reg_track_ebx_val	-1
-%define reg_track_eax_type	-1
-%define reg_track_ebx_type	-1
+%macro rdump 0
+	%warning DUMP
+	%warning eax: reg_eax_val
+	%warning ebx: reg_ebx_val
+	%warning ecx: reg_ecx_val
+	%warning edx: reg_edx_val
+	%warning ebp: reg_ebp_val
+	%warning esi: reg_esi_val
+	%warning edi: reg_edi_val
+%endmacro
+
+%macro rinit 0
+	%assign reg_eax_val 0
+	%assign reg_ebx_val 0
+	%assign reg_ecx_val 0
+	%assign reg_edx_val 0
+	%assign reg_ebp_val 0
+	%assign reg_esi_val 0
+	%assign reg_edi_val 0
+%endmacro
+
+%macro rtaint 0
+	%assign reg_eax_val -1
+	%assign reg_ebx_val -1
+	%assign reg_ecx_val -1
+	%assign reg_edx_val -1
+	%assign reg_ebp_val -1
+	%assign reg_esi_val -1
+	%assign reg_edi_val -1
+%endmacro
+
+rtaint
+
+%macro rset 2
+	%defstr reg_str %1
+
+	%if %isidn(reg_str, "eax")
+		%assign reg_eax_val %2
+	%elif %isidn(reg_str, "ebx") 
+		%assign reg_ebx_val %2
+	%elif %isidn(reg_str, "ecx") 
+		%assign reg_ecx_val %2
+	%elif %isidn(reg_str, "edx") 
+		%assign reg_edx_val %2
+	%elif %isidn(reg_str, "esp") 
+		%assign reg_esp_val %2
+	%elif %isidn(reg_str, "ebp") 
+		%assign reg_ebp_val %2
+	%elif %isidn(reg_str, "esi") 
+		%assign reg_esi_val %2
+	%elif %isidn(reg_str, "edi") 
+		%assign reg_edi_val %2
+	%else
+		%error no such register %1
+	%endif
+%endmacro
+
+%macro findzero 0
+	%defstr reg_zero
+	%if reg_eax_val == 0
+		%defstr reg_zero eax
+	%elif reg_ebx_val == 0
+		%defstr reg_zero ebx
+	%elif reg_ecx_val == 0
+		%defstr reg_zero ecx
+	%elif reg_edx_val == 0
+		%defstr reg_zero edx
+	%elif reg_esp_val == 0
+		%defstr reg_zero esp
+	%elif reg_ebp_val == 0
+		%defstr reg_zero ebp
+	%elif reg_esi_val == 0
+		%defstr reg_zero esi
+	%elif reg_edi_val == 0
+		%defstr reg_zero edi
+	%endif
+%endmacro
+
+
+%ifndef REG_OPT
+%define REG_OPT 0
+%endif
+
+%macro rget 1
+%if REG_OPT
+	%defstr reg_str %1
+
+	%if %isidn(reg_str, "eax")
+		%assign reg_val reg_eax_val
+	%elif %isidn(reg_str, "ebx") 
+		%assign reg_val reg_ebx_val
+	%elif %isidn(reg_str, "ecx") 
+		%assign reg_val reg_ecx_val
+	%elif %isidn(reg_str, "edx") 
+		%assign reg_val reg_edx_val
+	%elif %isidn(reg_str, "esp") 
+		%assign reg_val reg_esp_val
+	%elif %isidn(reg_str, "ebp") 
+		%assign reg_val reg_ebp_val
+	%elif %isidn(reg_str, "esi") 
+		%assign reg_val reg_esi_val
+	%elif %isidn(reg_str, "edi") 
+		%assign reg_val reg_edi_val
+	%else
+		%error no such register %1
+	%endif
+
+	%if reg_val > -1
+		%assign reg_defined 1
+	%else
+		%assign reg_defined 0
+	%endif
+
+	%if reg_val == -2 || (reg_defined && reg_val < 256)
+		%assign reg_8bit 1
+	%else
+		%assign reg_8bit 0
+	%endif
+
+	%if reg_val == -2 || (reg_defined && reg_val < 0x80000000)
+		%assign reg_notneg 1
+	%else
+		%assign reg_notneg 0
+	%endif
+%else
+	%assign	reg_val -1
+	%assign	reg_defined 0
+	%assign	reg_8bit 0
+%endif
+%endmacro
+
+%imacro taint 1-*
+	%rep %0
+
+		%warning %1 tainted: -1
+		rset %1, -1
+	%rotate 1
+	%endrep
+%endmacro
+
+
 %imacro regparse 1
 	%defstr reg_str %1
 
@@ -97,12 +281,6 @@
 
 	%substr reg_id   reg_str 2,1
 	%substr reg_type reg_str 3,1
-
-	%defstr	reg_track_type2 %strcat("reg_track_",reg_str,"_type")
-	%defstr	reg_track_val2  %strcat("reg_track_",reg_str,"_val")
-	%xdefine	reg_track_type	reg_track_type2
-	%xdefine	reg_track_val	reg_track_type2
-
 
 	%ifidn reg_type,'x'
 		%assign reg_var 1
@@ -128,7 +306,13 @@
 %endmacro
 
 %imacro int32 1
-	%assign uint32 (+%1 % 0xFFFFFFFF)
+
+	%if %1 < 0
+		%assign uint32 (0x100000000 - %1)
+		;%assign uint32 (~%1)
+	%else
+		%assign uint32 (+%1 % 0xFFFFFFFF)
+	%endif
 
 	%if %1 > 0x7FFFFFFF
 		%assign sint32 -(-%1 % 0xFFFFFFFF)
@@ -136,9 +320,11 @@
 		%assign sint32 %1
 	%endif
 
-	;%warning %1 signed: sint32
-	;%warning %1 unsigned: uint32
+	%warning %1 signed: sint32
+	%warning %1 unsigned: uint32
 %endmacro
+
+%assign rsave 0
 
 %imacro setfz 2
 	regparse %1
@@ -150,7 +336,13 @@
 	%assign uint32 0
 	%endif
 
-	%if %2 == 0
+	rget %1
+	%assign reg_delta uint32 - reg_val
+	%warning %1 old: reg_val, new: uint32, delta: reg_delta
+
+	%if reg_val == uint32
+		%warning same value, skipping
+	%elif %2 == 0
 		%assign rsave rsave+5
 						;0 bytes
 	%elif %2 == 1 && !reg_keepflags
@@ -165,6 +357,12 @@
 	%elif reg_var && uint32 % 256 == 0 && uint32 >= 256 && uint32 < 65536
 		%assign rsave rsave+3
 		mov	reg_high, %2/256	;2 bytes
+	%elif reg_var && uint32 == 0xFFFF && !reg_keepflags
+		%assign rsave rsave+1
+		dec	reg_leg			;2 bytes
+	%elif reg_notesp && sint32 < 128 && sint32 > -129
+		%assign rsave rsave+2
+		lea	%1, [%1+%2]		;3 bytes
 	%elif reg_var && sint32 < 0 && sint32 > -256 && !reg_keepflags
 		%assign rsave rsave+2
 		dec	%1
@@ -175,9 +373,6 @@
 	; mov reg_high/bswap 4b
 	; inc/ror1 3b
 	; bts 4b
-	%elif reg_notesp && sint32 < 128 && sint32 > -129
-		%assign rsave rsave+2
-		lea	%1, [%1+%2]		;3 bytes
 	%elif sint32 < 128 && sint32 > -129 && reg_stack
 		%assign rsave rsave+2
 		push	%2
@@ -194,17 +389,33 @@
 	%else
 		mov	%1, %2			;5 bytes
 	%endif
+	rset %1, uint32
 %endmacro
-
-%assign rsave 0
 
 %imacro __set_num 2
 	regparse %1
-	;%warning blobb %1 %2
 	int32 %2
-	%assign fo ~%2
 
-	%if %2 == 0
+	rget %1
+	%assign reg_delta uint32 - reg_val
+	rdump
+	%warning %1 old: reg_val, new: uint32/sint32, delta: reg_delta
+
+	%if reg_val == uint32
+		%warning same value, skipping
+	%elif reg_val == 0
+		%warning %1: from zero, going to setfz
+		setfz	%1, %2
+	%elif reg_defined && reg_delta == 1 && !reg_keepflags
+		%warning diff of 1, doing inc
+		inc	%1
+	%elif reg_defined && reg_delta == -1 && !reg_keepflags
+		%warning diff of -1, doing dec
+		dec	%1
+	%elif reg_var && reg_8bit && uint32 < 256
+		%warning %1 old and new value < 256, doing 8bit op (%1 reg_val uint32)
+		mov	reg_low, %2	
+	%elif %2 == 0
 		%assign rsave rsave+3
 		zero	%1	; 2 bytes
 	%elif %2 == 1 && !reg_keepflags
@@ -227,39 +438,68 @@
 		%assign rsave rsave+1
 		zero	%1	; 4 bytes
 		mov	reg_high, %2/256
-	%elif reg_var && %2 == 0xFFFF && !reg_keepflags
+	%elif reg_var && uint32 == 0xFFFF && !reg_keepflags
 		%assign rsave rsave+1
 		zero	%1	; 4 bytes
 		dec	reg_leg
+	%elif %isidn(%1,eax) && sint32 == -103 && !reg_keepflags
+		%assign rsave rsave+1
+		zero	%1	; 4 bytes
+		dec	%1
+		das
+	%elif %isidn(%1,eax) && sint32 == -503 && !reg_keepflags
+		%assign rsave rsave+1
+		zero	%1	; 4 bytes
+		dec	%1
+		aas
+	%elif %isidn(%1,eax) && sint32 == -155 && !reg_keepflags
+		%assign rsave rsave+1
+		zero	%1	; 4 bytes
+		dec	%1
+		daa
+	%elif %isidn(%1,eax) && sint32 == -65275 && !reg_keepflags
+		%assign rsave rsave+1
+		zero	%1	; 4 bytes
+		dec	%1
+		aaa
 	%else
 		mov	%1, %2	; 5 bytes
 	%endif
 
-	%assign %tok(reg_track_type) 1
-	%assign %tok(reg_track_val) %2
+	rset %1, uint32
 %endmacro
 
+%ifndef REG_SIMPLE
+%define REG_SIMPLE 0
+%endif
+
 %imacro set 2
-	;%warning set __FILE__:__LINE__, %0 %1 %2 foo low, fo, pass __PASS__
+	%if REG_SIMPLE
+		mov	%1, %2
+
+;%warning set __FILE__:__LINE__, %0 %1 %2 foo low, fo, pass __PASS__
 
 	; goddamn nasm devs... $ and $$ are "else", but so are unevaluated expressions
-	%ifidn %2,$
+	%elifidn %2,$
 		mov	%1, %2	; 5 bytes
+		taint	%1
 	%elifidn %2,$$
 		mov	%1, %2	; 5 bytes
+		taint	%1
 	%elifid %2
 		%if %1 == %2
 		; nothing
 		%else
 		mov	%1, %2	; 2 bytes
+		taint	%1
 		%endif
 	%elifnum %2
 		__set_num %1, %2
 	%elifstr %2
 		__set_num %1, %2
 	%else
-		%warning NOT NUM __FILE__:__LINE__, %0 %1 %2 reg_high reg_low, pass __PASS__
-		__set_num %1, %2
+		%warning NOT NUM __FILE__:__LINE__, %0 %1 %2 => %eval(%2), pass __PASS__
+		__set_num %1, %eval(%2)
 		;mov	%1, %2	; 5 bytes
 	%endif
 %endmacro

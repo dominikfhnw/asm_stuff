@@ -1,3 +1,4 @@
+true : ;nasm -f bin -o tiny $0 && chmod +x tiny; ls -l tiny;checksec --file=tiny;hardening-check -c tiny;exit
 ;; tiny.asm: Copyright (C) 2002 Brian Raiter <breadbox@muppetlabs.com>
 ;; Licensed under the terms of the GNU General Public License, either
 ;; version 2 or (at your option) any later version.

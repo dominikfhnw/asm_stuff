@@ -17,10 +17,10 @@ true : ;nasm -I asmlib/ -l nasm.list -f bin -o print $0 && ls -l print && chmod 
 %include "syscall.mac"
 
 BITS 32
-START equ _start - 3
+;START equ _start - 3
 ;START equ s2
 
-		org	0x684a9000
+		BASE	0x684a9000
 		ELF
 ff:		
 		mov	edi, 8[esp]
@@ -38,15 +38,16 @@ ff:
 		push	10
 		fild	dword [esp]
 		fldpi
-		doloop 8
+		doloop 2
 			fld st1
 			fmul
 		endloop
-		fist	dword [esp]
+		fbstp	[esp]
 		pop	eax
 		dbg_regdump
 		exit 0
 
+%if 0
 		xor	eax, eax
 		dbg_regdump
 		add	eax, strict byte -128
@@ -125,9 +126,10 @@ ff:
 		%endif
 		%endif
 		
-
+%endif
 %include "regdump2.mac"
 
+%if 0
 add cl,al
 db 0x02, 0xc8
 db 0x00, 0xc1
@@ -190,3 +192,5 @@ db 0x00, 0xc1
 		shl	esi, 13
 		set	ebp, 0xffffe000
 	%endif
+
+%endif

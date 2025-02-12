@@ -1,6 +1,7 @@
 #include <sys/syscall.h>
 #include <stddef.h>
 #define STDERR_FILENO 2
+#define STDOUT_FILENO 1
 
 static int syscall3(int nr, int arg0, int arg1, int arg2){
 	asm volatile(
