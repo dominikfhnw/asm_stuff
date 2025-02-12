@@ -16,7 +16,7 @@ true : ;nasm -I asmlib/ -l nasm.list -f bin -o print $0 && ls -l print && chmod 
 %include "elf.mac"
 %include "syscall.mac"
 
-START equ _start - 3
+;START equ _start - 3
 ;START equ s2
 
 		org	0x684a9000
@@ -34,7 +34,7 @@ ff:
 
 
 		
-		%if 0 ; FPU
+		%if 1 ; FPU
 		push	10
 		fild	dword [esp]
 		fldpi
@@ -48,6 +48,7 @@ ff:
 		exit 0
 		%endif
 
+%if 0
 %macro foo 0-1 1
 %push foo
 %$start1:
@@ -274,3 +275,4 @@ db 0x00, 0xc1
 	%endif
 
 %warning bytes saved by set/setfz:, rsave
+%endif

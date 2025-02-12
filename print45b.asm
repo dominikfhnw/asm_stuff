@@ -11,9 +11,9 @@ true : ;nasm -Iasmlib/ -f bin -o print $0 && ls -l print && chmod +x print && ob
 BASE  0x05439000
 ELF
 
-pop	ecx
-pop	ecx
-dec	edx
+pop	ecx	; argc
+pop	ecx	; *argv
+dec	edx	; 2^32-1
 int	0x80
 xchg	eax, ebx
 int	0x80

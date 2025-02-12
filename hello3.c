@@ -200,7 +200,6 @@ NORETURN exit_nonzero_syscall(){
 	UNREACHABLE
 }
 
-
 NORETURN exit_zero_syscall(){
 	native junk1;
 	native junk2;
@@ -501,15 +500,22 @@ INLINE void cpuid(){
 	//: "+S"(sp), "=b"(junk1), "=c"(junk2), "=d"(junk3) : "a"(mode) :"memory");
 }
 
+/*
 static int main(){
 	//puts_inline("hello world");
 	write(STDOUT_FILENO, "hello world\n", 13);
 	exit(0);
 }
+*/
 
 MAIN(){
-#if 0
-	dbg_inline("hello world");
+#if 1
+	write(STDOUT_FILENO, "hello world\n", 13);
+	//puts("hello world");
+	//exit_dontcare_syscall();
+	//exit_zero_syscall();
+	exit(0);
+	UNREACHABLE
 #else
 	//stderr_write("hello world\n");
 #endif
@@ -524,7 +530,7 @@ MAIN(){
 	cpuid4(0x80000004);
 	write(1, "\n", 1);
 	*/
-	//cpuid5();
+	cpuid5();
 	exit(42);
 
 

@@ -20,6 +20,39 @@
 ; ecx: 0
 ; eax: last hex ascii char
 ; input: same 
+%macro tohexf 1
+
+	doloop 8		;do{  8 hex digits
+		rol	%1, 4		; rotate high nibble to the bottom
+
+		mov	eax, %1 
+		and	al, 0x0f	; isolate low nibble
+		add	al, "k"
+		stosb			; *edi++ = al
+		;reg
+	endloop		;}while(--ecx)
+	
+	;reg
+	rset	eax, -1
+%endmacro
+
+%macro bcd 1
+
+	doloop 8		;do{  8 hex digits
+		rol	%1, 4		; rotate high nibble to the bottom
+
+		mov	eax, %1 
+		and	al, 0x0f	; isolate low nibble
+		add	al, "0"
+		reg
+		stosb			; *edi++ = al
+		;reg
+	endloop		;}while(--ecx)
+	
+	;reg
+	rset	eax, -1
+%endmacro
+
 %macro tohex 1
 
 	doloop 8		;do{  8 hex digits
@@ -31,8 +64,11 @@
 		sbb	al, 0x69	; read CF, set CF and conditionally set AF, and wrap AL to > 99h
 		das			; magic, which happens to work
 		stosb			; *edi++ = al
+		;reg
 	endloop		;}while(--ecx)
-
+	
+	;reg
+	rset	eax, -1
 %endmacro
 
 %macro tohex2 1
@@ -49,4 +85,28 @@
 		inc	edi
 	endloop		;}while(--ecx)
 
+	rset	eax, -1
 %endmacro
+
+%macro tohex 2
+
+	set	%2, 8
+	%%loop:
+		rol	%1, 4		; rotate high nibble to the bottom
+
+		mov	eax, %1 
+		and	al, 0x0f	; isolate low nibble
+		cmp	al, 10		; set CF according to digit>9
+		sbb	al, 0x69	; read CF, set CF and conditionally set AF, and wrap AL to > 99h
+		das			; magic, which happens to work
+		stosb			; *edi++ = al
+		dec	%2
+		;reg
+	jnz %%loop
+
+	;reg
+	rset	eax, -1
+	rset	%2, 0
+%endmacro
+
+

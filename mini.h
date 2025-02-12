@@ -28,6 +28,20 @@ __attribute__ ((used, section(".got.plt"), optimize("-O0"))) void fake(){
 	void* ptr = &dlsym;
 }
 
+// another fake function. It will make hardening-check believe we have stack clash protection
+#if HARDEN
+__attribute__ ((noreturn,used)) static void fakestackclash(){
+	asm volatile(
+		"1:\n"
+		"cmp	ax, 0x1000\n"
+		"jz	1b\n"
+		"sub	ax, 0x1000\n"
+		"or	al, 0x0\n"
+		"jmp	1b\n"
+	);
+}
+#endif
+
 // DEFINITION OF MAIN()
 
 #ifndef DYN
@@ -39,15 +53,51 @@ int main();
 
 #if defined(__GNUC__) && !defined(__llvm__) && !defined(__INTEL_COMPILER)
 #define REALLY_GCC
-//#define GCCATTR externally_visible, naked
-#define GCCATTR externally_visible
+#define GCCATTR externally_visible, naked
+//#define GCCATTR externally_visible
 #else
 #define GCCATTR
 #endif
 static void *xlink_map;
 __attribute__((noreturn, used, GCCATTR )) void _start(){
+	/*
+	if(xlink_map == 0){
+		dbg2("/lib/ld* <prog>, dummy!");
+	}else{
+		dbg2("init");
+	}
+	*/
+	// https://sourceware.org/git/?p=glibc.git;a=blob;f=sysdeps/x86_64/elf/start.S;h=3c2caf9d00a0396ef2b74adb648f76c6c74ff65f;hb=cvs/glibc-2_9-branch
+	// push stack position on stack
+	// TODO: does not seem to be needed anymore
+	#ifndef NOSTACK
+	#ifdef __amd64
+	asm("push rsp"); 
+	#elif __i386
+	asm volatile(
+	//	"xor ebp, ebp\n"
+	//	"pop esi\n"	
+	//	"mov ecx, esp\n"
+	//	"and esp, 0xfffffff0\n"
+	//	"push eax\n"
+	//	"push esp\n"
+	//	"push edx\n"
+		"mov ebp, esp\n" // not from original source
+	);
+	//__asm__("push esp"); 
+	#else
+	#error unsupported architecture
+	#endif
+	#endif
+
+	void *link_map;
 	// save EAX register in link map. Has to be the first command.
-	asm volatile("" : "=a" (xlink_map));
+	asm volatile("" : "=a" (link_map));
+
+	void (*exit2)(int);
+	exit2 = DNLOAD(link_map, 'exit');
+	exit2(111);
+	__builtin_unreachable();
 
 #if DBG_INIT
 	asm volatile(
@@ -70,35 +120,6 @@ __attribute__((noreturn, used, GCCATTR )) void _start(){
 		: : : "eax", "ebx", "ecx", "edx"
 	);
 #endif
-	/*
-	if(xlink_map == 0){
-		dbg2("/lib/ld* <prog>, dummy!");
-	}else{
-		dbg2("init");
-	}
-	*/
-	// https://sourceware.org/git/?p=glibc.git;a=blob;f=sysdeps/x86_64/elf/start.S;h=3c2caf9d00a0396ef2b74adb648f76c6c74ff65f;hb=cvs/glibc-2_9-branch
-	// push stack position on stack
-	// TODO: does not seem to be needed anymore
-	#ifndef NOSTACK
-	#ifdef __amd64
-	asm("push rsp"); 
-	#elif __i386
-	asm volatile(
-		"xor ebp, ebp\n"
-		"pop esi\n"	
-		"mov ecx, esp\n"
-		"and esp, 0xfffffff0\n"
-	//	"push eax\n"
-		"push esp\n"
-		"push edx\n"
-	//	"mov ebp, esp\n" // not from original source
-	);
-	//__asm__("push esp"); 
-	#else
-	#error unsupported architecture
-	#endif
-	#endif
 
 	//dbg("init");
 	//return syscall3(SYS_write, STDERR_FILENO, (int)s, n);
@@ -126,6 +147,7 @@ __attribute__((noreturn, used, GCCATTR )) void _start(){
 //	dbg2("init");
 	MAYBEBREAK();
 	
+
 	int ret = fakemain();
 #if DBG_INIT
 	dbg2("end");
