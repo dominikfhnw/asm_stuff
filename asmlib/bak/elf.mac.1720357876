@@ -1,0 +1,33 @@
+BITS 32
+
+%ifndef START
+START equ _start - 3
+%endif
+
+%macro ELF 0
+		db	0x7F, "ELF"
+		dd	1
+		dd	0
+		dd	$$			; vaddr
+		dw	2
+		dw	3
+		dd	START			; garbage/filesz
+		dd	START			; start/memsz
+	_start:	dd	4
+%endmacro
+
+%macro ELF_PHDR 0-1
+	%if %0 == 1
+		times $$-$+41   nop
+		db	169
+	%else
+		times $$-$+42   nop
+	%endif
+
+	dw	0x20
+	db	1
+
+	%if %0 == 1
+		db	0
+	%endif
+%endmacro

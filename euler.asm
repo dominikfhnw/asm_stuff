@@ -1,0 +1,86 @@
+%if 0
+
+OUT=print
+set -e
+nasm -I asmlib/ -f bin -o $OUT $0 "$@" 2>&1 | grep -vF ': ... from macro '
+ls -l $OUT
+chmod +x $OUT
+
+OFF=$(  readelf2 -lW $OUT 2>/dev/null | awk '$2=="0x000000"{print $3}')
+START=$(readelf2 -hW $OUT 2>/dev/null | awk '$1=="Entry"{print $4}')
+objdump -b binary -m i386 -D $OUT --adjust-vma=$OFF --start-address=$START
+
+set +e
+./$OUT
+echo ret $?
+exit
+
+%endif
+
+%include "stdlib.mac"
+
+%define REG_OPT 1
+;%define reg_stack 0
+
+		BASE	0x0dfd5000
+		ELF
+		
+		rinit
+
+		fldl2e
+		f2xm1
+		;fld1
+		;faddp	st1, st0
+
+		ELF_PHDR 1
+		push	10
+		fild	dword [esp]
+		doloop	16
+			fmul	st0, st1
+		endloop
+
+		fbstp	[esp]
+		lea	esi, [esp+8]
+		;mov	esi, esp
+		;add	esi, 8
+		inc	ebx
+		set	edx, 2
+		xchg	eax, edi
+
+		doloop	9
+			lodsb
+			taint	eax
+			taint	ebx
+			taint	ecx
+			reg
+
+			mov	ah, al
+			shr	al, 4
+			and	ax, 0x0F0F
+			;and	al, 0xF
+			;and	ah, 0xF
+
+			or	ax, 0x3030
+			;or	al, 0x30
+			;or	ah, 0x30
+			;or	eax, 0x3030
+
+			push	ecx
+			push	eax
+			mov	eax, edi
+			set	ecx, esp
+			int	0x80
+			taint	eax
+
+			pop	ecx
+			pop	ecx
+
+		endloop
+		reg
+		;exit 0
+		xchg	eax, ebx
+		;zero	ebx
+		
+		int	0x80
+
+%include "regdump2.mac"

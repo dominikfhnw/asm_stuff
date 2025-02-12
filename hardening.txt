@@ -1,0 +1,48 @@
+hardening-check:
+Position Independent Executable: readelf -lW. Type DYN and PHDR (!!) segment. green with funny msg if no PHDHR
+Stack protected: __stack_chk_fail defined (readelf -sW). yellow if no symbols
+Fortify Source functions: libc function like "gets" plus __NAME_chk. yellow if no libc function (readelf -sW)
+Read-only relocations: GNU_RELRO segment (readelf -lW)
+Immediate binding: readelf -dW. BIND_NOW or FLAGS.*BIND_NOW or FLAGS_1.*NOW. Always red in static executables
+Stack clash protection: Check for specific assembler sequence. objdump -d --no-show-raw-insn -M intel.
+Control flow integrity: readelf -n. String "x86 feature: IBT, SHSTK" (normally from .note.gnu.property)
+
+checksec:
+RELRO: readelf -l FILE | grep -q GNU_RELRO && readelf -d FILE | grep -q BIND_NOW
+CANARY: readelf -s FILE | grep -Eq '__stack_chk_fail|__intel_security_cookie'
+NX: readelf -l FILE | grep 'GNU_STACK' | grep -q 'RWE'
+PIE: readelf -h | grep 'Type: DYN' && readelf -d | grep -q DEBUG (without debug marked as DSO)
+FORTIFY: readelf --dyn-syms | grep '_chk$'
+SYMBOLS:
+	# check for stripped symbols in the binary
+	IFS=" " read -r -a SYM_cnt <<< "$(${readelf} --symbols "${1}" 2>/dev/null | grep '\.symtab' | cut -d' ' -f5 | cut -d: -f1))"
+	if ${readelf} --symbols "${1}" 2>/dev/null | grep -q '\.symtab'; then
+	echo_message "\033[31m${SYM_cnt[0]} Symbols\t\033[m  " 'Symbols,' ' symbols="yes"' '"symbols":"yes",'
+	else
+	echo_message '\033[32mNo Symbols\t\033[m  ' 'No Symbols,' ' symbols="no"' '"symbols":"no",'
+	fi
+
+
+
+.hardening:
+cmp     ax, 0x1000
+;cmp	rsp, rax ; for 64bit codebase, 1 byte shorter
+je      .hardening
+sub     ax, 0x1000
+or      al, 0x0
+jmp     .hardening
+
+ 8048070:       66 3d 00 10             cmp    ax,0x1000
+ 8048074:       74 fa                   je     8048070 <foo.hardening>
+ 8048076:       66 2d 00 10             sub    ax,0x1000
+ 804807a:       0c 00                   or     al,0x0
+ 804807c:       eb f2                   jmp    8048070 <foo.hardening>
+
+   6b30f:       48 39 cc                cmp    rsp,rcx
+   6b312:       74 15                   je     6b329 <string_list_dollar_star@@Base+0x59>
+   6b314:       48 81 ec 00 10 00 00    sub    rsp,0x1000
+   6b31b:       48 83 8c 24 f8 0f 00    or     QWORD PTR [rsp+0xff8],0x0
+   6b322:       00 00
+   6b324:       48 39 cc                cmp    rsp,rcx
+   6b327:       75 eb                   jne    6b314 <string_list_dollar_star@@Base+0x44>
+

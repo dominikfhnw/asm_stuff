@@ -1,0 +1,198 @@
+%ifndef DEBUG
+%define DEBUG 0
+%endif
+
+%define SYS_write	4
+%define SYS_read	3
+%define SYS_exit	1
+
+%define STDIN		0
+%define STDOUT		1
+%define STDERR		2
+
+%imacro sc_param 1-2
+	%ifempty %2
+		;%warning uhoh empty __LINE__, %0 %1 %2, pass __PASS__
+	%elifidn %2,x
+		;%warning uhoh x __LINE__, %0 %1 %2, pass __PASS__
+	%elifidn %2,pop
+		;%warning uhoh pop __LINE__, %0 %1 %2, pass __PASS__
+		pop	%1
+	%else
+		set	%1, %2
+	;%else
+	;	%warning uhoh else __LINE__ %0 %1 %2, pass __PASS__
+	%endif
+%endmacro
+
+%imacro sc_nr 1
+	set	eax, %1
+%endmacro
+
+%idefine sc_exec int 0x80
+
+%imacro sc_param1 1
+	sc_param ebx, %1
+%endmacro
+
+%imacro sc_param2 1
+	sc_param ecx, %1
+%endmacro
+
+%imacro sc_param3 1
+	sc_param edx, %1
+%endmacro
+
+%imacro syscall 1-4
+	sc_nr	%1
+	%if %0 > 1
+		sc_param1 %2
+	%endif
+	%if %0 > 2
+		sc_param2 %3
+	%endif
+	%if %0 > 3
+		sc_param3 %4
+	%endif
+	sc_exec
+%endmacro
+
+%imacro exit 0-1 0
+	syscall SYS_exit, %1
+%endmacro
+
+%imacro read 3
+	syscall SYS_read, %1, %2, %3
+%endmacro
+
+%imacro write 3
+	;%warning WWWW uhoh x __LINE__ %0 %1 %2 %3, pass __PASS__
+	syscall SYS_write, %1, %2, %3
+%endmacro
+
+%imacro puts 2
+	write 1, %1, %2
+%endmacro
+
+%imacro inline_str 1
+	call	%%endstr
+	db	%1
+	%%endstr:
+%endmacro
+
+%imacro printstr 1
+	;%strcat string %1, `\n`
+	%strcat string %1
+	%strlen strlen string
+	inline_str string
+	puts	pop, strlen
+%endmacro
+
+%imacro ddprint 1.nolist
+	pusha
+	pushf
+	printstr %1
+	popf
+	popa
+%endmacro
+
+%macro cpuidstuff 0
+	%if 0
+		;set edi, 0x80000000
+		set edi, 0
+
+		doloop 64
+			push ecx
+			mov eax, ecx
+			add eax, edi
+			mov ebp, ecx
+			add ebp, edi
+
+			;call regdump
+			cpuid
+			call regdump
+			pop ecx
+		endloop
+		mov eax, edi
+		set ebx,12
+		set edx,12
+		cpuid
+		call regdump
+		exit
+	%endif
+%endmacro
+
+%macro printstatic 1
+	%defstr NULL 0x0
+	%strcat string %1, `\0`
+	%strlen strlen string
+	call printstatic_func
+	;db strlen
+	db string
+%endmacro
+
+; stack:
+; -strlen
+; -return address
+; -flags
+; -registers
+%macro import_printstatic 0
+	pushf
+	pusha
+
+	%if 1
+		%defalias set setfz
+		lahf
+		cpuid
+	%endif
+
+	;mov	bl, 1
+	;inc	ebx
+	mov	ebp, 4*9[esp]
+	mov	edi, ebp
+	;mov	ch, 1
+	dec	ecx
+	;set	edx, 0
+	call regdump
+	repne scasb
+	sub	edx, ecx
+	call regdump
+	exit
+
+	;mov	dl, [ecx]
+	;call regdump
+
+	;lea	ecx, [ecx+ebx]
+	inc	ecx
+	puts ecx, edx
+
+	add	edx, ecx
+	;lea	edx, [ecx+edx]
+	;call regdump
+	mov	4*9[esp], edx
+
+	%undefalias set
+	popa
+	popf
+	ret
+	
+%endmacro
+
+%if DEBUG
+%define ddd 
+%else
+%macro ddd 0+
+%endmacro
+%endif
+
+%imacro dprint 1.nolist
+	%if DEBUG
+		%defstr line __LINE__
+		%strcat string "DBG ", __FILE__, ":", line, ": ", %1, `\n`
+		pusha
+		pushf
+		printstr string
+		popf
+		popa
+	%endif
+%endmacro

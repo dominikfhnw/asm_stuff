@@ -1,0 +1,181 @@
+%if DEBUG
+; 58 byte no label
+; 69 byte count label
+; 83 byte 1byte label
+; 94 byte full label
+
+; count labels: 11 bytes
+; 1byte labels: 25 bytes	+14 bytes
+; full  labels: 36 bytes	+11 bytes
+
+; each of those adds 4 byte of code and 1*REGS of stack used
+;%define SPACE 1
+%define NEWLINE 1
+%define EXTENDED 0
+%define FLAGS 1
+
+%define LABEL 2
+%define ALTLABEL 0
+
+%if LABEL || ALTLABEL
+%define SPACE 1
+%else
+%define SPACE 0
+%endif
+
+%if LABEL && ALTLABEL
+%error cant have LABEL and ALTLABEL together
+%endif
+
+%define REGS 9
+%define RECORD (8 + LABEL + ALTLABEL + SPACE + NEWLINE + EXTENDED)
+TOTAL equ ( (RECORD*REGS) + (2*NEWLINE) + (FLAGS*17) )
+%warning TOTAL STACK ToOTAL
+; eax ecx edx ebx esp ebp esi edi eflags
+;  AX  CX  DX  BX  SP  BP  SI  DI  FL
+;  A   C   D   B   S   P   s   d   f
+;hlt
+
+times 8 db 0
+
+regdump:
+pusha
+pushf			; save processor state on stack
+
+regdump_nosave:
+%if LABEL
+call	.begin
+.labels:
+	%if NEWLINE
+	db 10
+	%endif
+	%if FLAGS
+	db "FLG "
+	db "."
+	db "CrPrArZSTIDO"
+	db 10
+	%endif
+	%if LABEL == 2
+	db "FLDISIBPSPBXDXCXAX"
+	;db "fldisibpspbxdxcxax"
+	%else
+	db "fdsPSBDCA"
+	%endif
+.begin:
+pop	esi
+mov	edx, esp
+%else
+mov	esi, esp
+%endif
+
+%if ALTLABEL
+set	edx, 'Z'
+%endif
+
+; FLAGS still original here
+; used elsewhere: esi, edx, esp, eax
+; free: ebx, ecx
+%if FLAGS
+pushf
+pop	ebx
+%endif
+
+add	esp, -TOTAL
+mov	edi, esp	; alloca
+
+
+%if NEWLINE
+	lodsb
+	stosb
+	;stos	0x0a
+%endif
+
+
+%if FLAGS
+	push	edx
+
+	; load header
+	lodsd
+	stosd
+
+	; empty character
+	lodsb
+	xchg	eax, edx
+
+	doloop 12, push
+		lodsb
+		shr	ebx, 1
+		;jc	.c
+		;mov	eax, edx
+		;.c:
+		cmovnc	eax, edx
+		stosb
+	endloop
+
+	; nl
+	lodsb
+	stosb
+
+	pop	edx
+%endif
+
+
+doloop	REGS
+	%if EXTENDED
+	stos	'E'		; whitespace
+	%endif
+
+	%if LABEL == 2
+	lodsw			; load description text
+	stosw			; store it
+	%elif LABEL == 1
+	lodsb			; load description text
+	stosb			; store it
+	%endif
+
+	%if ALTLABEL
+	mov	eax, edx
+	stosb
+	dec	edx
+	%endif
+
+	%if SPACE
+	stos	0x20		; whitespace
+	%endif
+
+	%if LABEL
+	xchg	edx, esi	; switch back to the pusha registers on the stack
+	%endif
+
+	push	ecx
+
+		;; clobbers: eax, ebx, ecx
+		lodsd
+		mov	ebx, eax
+
+		tohex	ebx
+
+	pop	ecx
+
+	%if LABEL
+	xchg	edx, esi	; back again to description text
+	%endif
+
+	%if NEWLINE
+	stos	0x0a
+	%endif
+endloop
+
+%if NEWLINE
+stosb
+%endif
+
+
+puts	esp, TOTAL
+
+add	esp, edx
+popf
+popa
+ret
+
+%endif

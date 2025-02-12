@@ -1,0 +1,27 @@
+%if DEBUG
+%define dbg_regdump	call regdump
+%else
+%define dbg_regdump
+%endif
+
+; input register as param %1 (except eax, ecx)
+; output as string to edi
+; output:
+; ecx: 0
+; eax: last hex ascii char
+; input: same 
+%macro tohex 1
+	push	8		; 8 hex digits
+	pop	ecx
+
+	.loop:			;do{
+	rol	%1, 4		; rotate high nibble to the bottom
+
+	mov	eax, %1 
+	and	al, 0x0f	; isolate low nibble
+	cmp	al, 10		; set CF according to digit>9
+	sbb	al, 0x69	; read CF, set CF and conditionally set AF, and wrap AL to > 99h
+	das			; magic, which happens to work
+	stosb			; *edi++ = al
+	loop	.loop		;}while(--ecx)
+%endmacro

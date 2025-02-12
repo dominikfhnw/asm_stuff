@@ -1,0 +1,4 @@
+%include "generic.mac"
+%include "elf.mac"
+%include "syscall.mac"
+
