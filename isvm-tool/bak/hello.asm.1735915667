@@ -1,0 +1,65 @@
+%if 0
+
+OUT=print
+set -e
+nasm -I asmlib/ -f bin -o $OUT $0 "$@" 2>&1 | grep -vF ': ... from macro '
+ls -l $OUT
+chmod +x $OUT
+
+OFF=$(  readelf2 -lW $OUT 2>/dev/null | awk '$2=="0x000000"{print $3}')
+START=$(readelf2 -hW $OUT 2>/dev/null | awk '$1=="Entry"{print $4}')
+objdump -b binary -m i386 -D $OUT --adjust-vma=$OFF --start-address=$START
+
+set +e
+./$OUT
+echo ret $?
+exit
+
+
+%endif
+
+%define MSG `hello, world\n`
+%strlen LEN MSG
+%define REG_OPT 1
+%define PUSH 1
+; 'hello, world', 10
+; hell
+; o, w
+; orld
+; 10
+
+; hello, world
+; hello, world
+; hello, world
+
+;%define START _start - 2
+
+%include "stdlib.mac"
+ELF
+
+BASE 0x0d439000
+rinit
+rset	eax, 4
+rset	ebx, 1
+
+	;set	edx, 13
+	;push	10
+	;push	'orld'
+	puts	msg, LEN
+
+ELF_PHDR 3
+
+%if PUSH
+	;push	'o, w'
+	;push	'hell'
+	;exitafterputs
+	xchg	eax, ebx
+	int	0x80
+
+%else
+	printstr "hello, world"
+	exitafterputs
+%endif
+msg:	db	MSG
+
+%include "regdump2.mac"

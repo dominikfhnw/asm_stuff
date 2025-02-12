@@ -1,0 +1,71 @@
+%if 0
+
+OUT=sntp
+set -e
+nasm -I asmlib/ -f bin -o $OUT $0 "$@" 2>&1 | grep -vF ': ... from macro '
+ls -l $OUT
+chmod +x $OUT
+
+OFF=$(  readelf2 -lW $OUT 2>/dev/null | awk '$2=="0x000000"{print $3}')
+START=$(readelf2 -hW $OUT 2>/dev/null | awk '$1=="Entry"{print $4}')
+objdump -b binary -m i386 -D $OUT --adjust-vma=$OFF --start-address=$START
+
+set +e
+strace -ni ./$OUT
+echo ret $?
+exit
+
+
+%endif
+
+%define LOCAL 0
+%define REG_OPT 1
+%define NTP_OFFSET 2_208_988_800 ; first day of unix VS NTP timestamp
+
+%include "stdlib.mac"
+ELF
+
+BASE 0x05ffb000
+rinit
+;rset	eax, 255
+;rset	ebx, 1
+add	eax, SYS_socket - 259
+rset	eax, SYS_socket
+;reg
+
+socket	AF_INET, SOCK_DGRAM, IPPROTO_IP
+
+ELF_PHDR 1
+reg
+
+xchg	eax, ebx
+%if LOCAL
+	push	`\x7f\x0\x0\x1`
+%else
+	push	`\x82\x3C\xCC\x0A`
+%endif
+push	`\x02\x00\x00\x7B`
+connect	ebx, esp, 16
+
+alloca	48
+mov	ecx, esp
+mov	[esp], byte 0x9
+send	ebx, ecx, 48
+
+
+recv	ebx, ecx, 48
+mov	eax, [ecx+40]
+bswap	eax
+reg
+sub	eax, NTP_OFFSET
+
+settime	eax
+inc	ebx
+xchg	eax, ebx
+int	0x80
+
+;printnumexit
+;exit	0
+
+%include "regdump2.mac"
+

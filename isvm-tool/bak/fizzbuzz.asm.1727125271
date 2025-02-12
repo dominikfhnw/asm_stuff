@@ -1,0 +1,73 @@
+true : ;OUT=fizzbuzz; nasm -Lmes -l out -I asmlib/ -f bin -o $OUT $0 "$@" 2>&1 | grep -vF ' ... from macro ' && ls -l $OUT && chmod +x $OUT && objdump -b binary -m i386 -D $OUT --adjust-vma=0x3d504000 --start-address=0x3d504019 && ./$OUT; echo ret $?; exit
+
+%define MAX	100
+%define	REG_OPT	1
+
+%include "stdlib.mac"
+ELF
+BASE 0x3d909000
+
+rinit
+set	edi, 3
+set	ebp, 5
+
+
+;set	ebx, 0 ; current number
+
+;sub	esp, 4096
+;mov	edi, esp
+
+.loop:
+	inc	eax
+	push	eax
+	taint	eax
+ELF_PHDR 1
+	reg
+	div	edi
+	reg
+	test	edx, edx
+	jnz	.notthree
+	printstr "Fizz"
+	inc	esi
+	reg
+
+	.notthree:
+	pop	eax
+	push	eax
+	cdq
+	reg
+	div	ebp
+	test	edx, edx
+	jnz	.notfive
+	taint	ebx, edx
+	printstr "Buzz"
+	inc	esi
+	reg
+	.notfive:
+	test	esi, esi
+	jnz	.next
+	pop	eax
+	push	eax
+	cdq
+	;mov	eax, ebx
+	;test	edx, edx
+	;jnz 	.n
+	;push	'fizz'
+	;.n:
+	printnum ' '
+	;reg
+
+	.next:
+	printstr `\n`
+	zero	esi
+	cdq
+	pop	eax
+	cmp	eax, MAX
+	jl	.loop
+
+reg
+xchg	eax, ebx
+mov	ebx, edx
+int	0x80
+;exit
+%include "regdump2.mac"

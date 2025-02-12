@@ -1,0 +1,176 @@
+true : ;OUT=fizzbuzz; nasm -Lmes -l out -I asmlib/ -f bin -o $OUT $0 "$@" 2>&1 | grep -vF ' ... from macro ' && ls -l $OUT && chmod +x $OUT && objdump --no-addresses -Mintel -b binary -m i386 -D $OUT --adjust-vma=0x3d994000 --start-address=0x3d994019 && ./$OUT; echo ret $?; exit
+;true : ;OUT=fizzbuzz; nasm -Lmes -l out -I asmlib/ -f bin -o $OUT $0 "$@" 2>&1 | grep -vF ' ... from macro ' && ls -l $OUT && chmod +x $OUT && objdump -Mintel -b binary -m i386 -D $OUT --adjust-vma=0x3d994000 --start-address=0x3d994019 && ./$OUT; echo ret $?; exit
+
+; MAX < 128:	131
+;    128..254:	134
+; MAX ==  255:	132
+; MAX ==  256:	133
+;   257..1000:	135
+; MAX ==  512:	133
+; MAX == 1024:	135
+; MAX == 2048:	135
+;      1000..:	137
+;    Infinite:	127
+
+; sorted:
+;    Infinite:	127
+; MAX < 128:	131
+; MAX ==  255:	132
+; MAX ==  512:	133
+; MAX ==  256:	133
+;    128..254:	134
+;   257..1000:	135
+; MAX == 1024:	135
+; MAX == 2048:	135
+;      1000..:	137
+
+%define MAX	127
+%define MAX	0
+%define MAX	1001
+%define MAX	127
+%define MAX	512
+%define MAX	127
+%define MAX	512
+%define MAX	1024
+%define MAX	127
+%define MAX	2048
+%define MAX	10100
+%define	REG_OPT	1
+
+%include "stdlib.mac"
+ELF 
+BASE 0x3d994000
+
+;rinit
+%if MAX == 0 || MAX > 255
+rset	eax, -1
+%else
+rset	eax, 1
+%endif
+
+; eax: number
+; ebx: divisor/fd
+; ecx: string pointer
+; edx: remainder/string length
+; ebp: unused
+; esi: itoa length
+; edi: itoa saved eax
+
+;arg1 must not be negative
+%macro isdiv 2
+	isdivA	%1, %2
+	isdivB
+%endmacro
+
+%macro isdivA 2
+	push	eax
+	push	edx
+	set	eax, %1
+	set	ebx, %2
+	cdq
+%endmacro
+
+%macro isdivB 0 
+	;reg
+	div	ebx
+	;reg
+	test	edx, edx
+	;cdq
+	pop	edx
+	pop	eax
+%endmacro
+
+
+	;inc	eax	;encoded in  memory address
+	;set	edx, 1	;encoded in  memory address
+	inc	edx
+	rset	edx, 1
+	push	0xA
+
+	isdivA	eax, 5
+ELF_PHDR 1
+	isdivB
+	;reg
+	jnz	.notfive
+	push	'Buzz'
+	;add	edx, 5
+	set	edx, 5
+
+	.notfive:
+	;reg
+	isdiv	eax, 3
+	jnz	.notthree
+	push	'Fizz'
+	add	edx, 4
+	.notthree:
+	;reg
+	mov	ecx, esp
+	cmp	edx, 1
+	jnz	.next
+
+		mov	edi, eax
+		%if MAX > 9999 || MAX == 0
+		;push	0 ;same as add	esp, -4
+		;add	esp, -12
+		;push	0
+		push	eax
+		push	eax
+		;push	eax
+		;%elif MAX > 1000
+		;push	eax
+		;push	eax
+		%else
+		push	eax
+		%endif
+		set	ebx, 10
+		set	esi, 1
+		cdq
+
+		.itoa:
+			inc	esi
+			reg
+			div	ebx
+			reg
+			add	dl, '0'
+			dec	ecx
+			%if MAX > 1000 || MAX == 0
+			mov	[ecx], dl
+			cdq
+			%else
+			xchg	[ecx], dl
+			%endif
+			test	eax, eax
+			;reg
+		jnz	.itoa
+
+		xchg	eax, edi
+		xchg	edx, esi
+
+	.next:
+	;reg
+	push	eax
+	puts	ecx, edx
+	reg
+	pop	eax
+
+%if MAX == 0 
+	jmp	START
+%else
+	%if MAX < 128
+		cmp	al, MAX
+	%elif MAX == 255
+		cmp	ah, 1
+	%elif MAX % 256 == 0
+		cmp	ah, MAX/256
+	%else
+		cmp	eax, MAX
+	%endif
+
+	jl	START
+	reg
+	xchg	eax, ebx
+	zero	ebx
+	int	0x80
+%endif
+%include "regdump2.mac"
+

@@ -1,0 +1,2 @@
+stty cbreak -echo
+./print

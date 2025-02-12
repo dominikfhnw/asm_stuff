@@ -1,0 +1,175 @@
+%if 0
+
+OUT=viert.com
+set -e
+if [ -n "${FULL-}" ]; then
+	rm -f $OUT $OUT.o
+	nasm -g -I asmlib/ -f elf32 -o $OUT.o "$0" "$@" 2>&1 | grep -vF ': ... from macro '
+	FLAGS=
+	ld $FLAGS -m elf_i386 -z noseparate-code $OUT.o -o $OUT
+	cp $OUT $OUT.full
+	ls -l $OUT.full
+	sstrip $OUT
+else
+	rm -f $OUT
+	nasm -I asmlib/ -f bin -o $OUT "$0" "$@" 2>&1 | grep -vF ': ... from macro '
+fi
+ls -l $OUT
+chmod +x $OUT
+
+DUMP="-Mintel"
+#DUMP="--no-addresses -Mintel"
+if [ -n "${FULL-}" ]; then
+	objdump $DUMP -d $OUT.full
+else
+	OFF=$(  readelf2 -lW $OUT 2>/dev/null | awk '$2=="0x000000"{print $3}')
+	#OFF="0x10000"
+	START=$(readelf2 -hW $OUT 2>/dev/null | awk '$1=="Entry"{print $4}')
+	objdump $DUMP -b binary -m i386 -D $OUT --adjust-vma="$OFF" --start-address="$START"
+fi
+
+set +e
+ls -l $OUT
+strace -frni ./$OUT
+echo ret $?
+exit
+
+%endif
+
+%define REG_OPT		1
+%define REG_SEARCH	1
+%define REG_ASSERT	0
+%define LINCOM		1
+
+%include "stdlib.mac"
+
+;%define	TABLE_OFFSET	edi
+;%define	CODE_OFFSET	esi
+;%define	NEXT_WORD	eax
+
+%define	TABLE_OFFSET	edi
+%define	CODE_OFFSET	esi
+%define	NEXT_WORD	edx
+
+%assign	WORD_COUNT	2
+%define zero_seg	0
+
+
+; **** Macros ****
+%macro NEXT 0
+	%%next:
+	%if 1
+		; + freely choose which registers to use
+		; - every NEXT is 1 byte longer
+		movzx	NEXT_WORD, byte [CODE_OFFSET]
+		inc	CODE_OFFSET
+		taint	NEXT_WORD
+	%else
+		%ifnidn NEXT_WORD,eax
+			%error NEXT__WORD is not eax
+		%endif
+		set	NEXT_WORD, 0
+		lodsb
+	%endif
+	jmp	[TABLE_OFFSET + 4*NEXT_WORD]
+	mov	NEXT_WORD, [TABLE_OFFSET + 4*NEXT_WORD]
+	lea	NEXT_WORD, [TABLE_OFFSET + 4*NEXT_WORD]
+	jmp	NEXT_WORD
+	jmp	[NEXT_WORD]
+
+%endmacro
+
+%macro DEF 1-2
+	%if %0 == 1
+		NEXT
+	%endif
+	DEF%1:
+	rtaint
+	rset	NEXT_WORD, %1
+	%assign WORD_COUNT WORD_COUNT+1
+%endmacro
+
+%macro WORD 1
+	db %1
+%endmacro
+
+; **** Jump table ****
+SECTION .rodata align=1 follows=.text
+STATIC_TABLE:
+%warning WORD COUNT: WORD_COUNT
+%assign	i 0
+%rep	WORD_COUNT
+	dd DEF%[i]
+	%assign i i+1
+%endrep
+
+; **** Forth code ****
+FORTH:
+	WORD 1
+	WORD 1
+	WORD 1
+	;;WORD 0
+	;WORD 1
+	;WORD 2
+	;WORD 1
+
+
+; **** Assembler code ****
+SECTION .text align=1
+rinit
+%if ELF_CUSTOM
+	ELF 1
+	BASE	0x3d909000
+%else
+	_start:
+%endif
+
+set	TABLE_OFFSET, STATIC_TABLE
+%assign	OFF FORTH-STATIC_TABLE
+lea	CODE_OFFSET, [TABLE_OFFSET+OFF]
+taint	CODE_OFFSET
+movd	mm0, TABLE_OFFSET
+movd	mm1, CODE_OFFSET
+jmp	lastnext
+
+
+%if ELF_CUSTOM
+	ELF_PHDR
+	db	0
+%endif
+
+;; **** Start of program ****
+;%if !ELF_CUSTOM && !LINCOM
+;	set	TABLE_OFFSET, STATIC_TABLE
+;	%assign	OFF FORTH-STATIC_TABLE
+;	lea	CODE_OFFSET, [TABLE_OFFSET+OFF]
+;	taint	CODE_OFFSET
+;	movd	mm0, TABLE_OFFSET
+;	movd	mm1, CODE_OFFSET
+;	jmp	lastnext
+;%endif
+
+
+; **** Codeword definitions ****
+; first definition does not need a NEXT
+DEF 0, nonext
+	exit	x
+
+; previous definition can never return, so no need for NEXT
+DEF 1, nonext
+	printstr "HEYA"
+%if 0
+
+DEF 2
+	sleep 1
+%endif
+;DEF 3
+	;rwx
+	
+
+lastnext:
+	NEXT
+
+%include "regdump2.mac"
+
+

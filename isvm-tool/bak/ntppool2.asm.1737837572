@@ -1,0 +1,368 @@
+%if 0
+
+OUT=sntp
+set -e
+set -o pipefail
+if [ -n "${FULL-}" ]; then
+	set -x
+	rm -f $OUT $OUT.o
+	nasm -g -I asmlib/ -f elf32 -o $OUT.o "$0" "$@" 2>&1 | grep -vF ': ... from macro '
+	#ld -m elf_i386 -z noseparate-code $OUT.o -o $OUT
+	if [ -n "${HARDEN-}" ]; then
+		ld -z ibt -z shstk --script link -m elf_i386 -u __stack_chk_fail -u __gets_chk -z relro -z now --build-id=none --orphan-handling=warn -z noseparate-code $OUT.o -o $OUT
+		readelf -Wa $OUT
+		cp $OUT $OUT.full
+		ls -l $OUT.full
+		cat rechead2 > s.c
+		elftoc -e $OUT >> s.c
+		echo -e '#include <stdio.h>\nint main(void) { fwrite(&foo, 1, offsetof(elf, _end), stdout);return(0); }' >> s.c
+		#strip --strip-dwo -wK'*' -R .hash -R .gnu.hash -R .gnu.version -R .gnu.version_r -R .got -R .got.plt -R .rel.plt -R .rel.got $OUT.full
+		sed -i 's/PT_NULL/PT_GNU_RELRO/' s.c
+		bash ./s.c
+		strace -ni ./cust 127.0.0.1 ||:
+		echo
+		echo "## CHECKSEC"
+		checksec --file=cust ||:
+		echo
+		echo "## HARDENING-CHECK"
+		hardening-check -c cust
+	else
+		FLAGS="--build-id=none --orphan-handling=warn --gc-sections --print-gc-sections" 
+		ld $FLAGS -m elf_i386 -z noseparate-code $OUT.o -o $OUT
+		cp $OUT $OUT.full
+		ls -l $OUT.full
+	fi
+	sstrip -z $OUT
+else
+	rm -f $OUT
+	#nasm -I asmlib/ -f bin -o $OUT "$0" "$@"
+	nasm -I asmlib/ -f bin -o $OUT "$0" "$@" 2>&1 | grep -vF ': ... from macro '
+fi
+ls -l $OUT
+chmod +x $OUT
+
+if [ -n "${FULL-}" ]; then
+	#objdump --visualize-jumps=color -d $OUT.full
+	objdump -d $OUT.full
+else
+	OFF=$(  readelf -lW $OUT 2>/dev/null | awk '$2=="0x000000"{print $3}')
+	START=$(readelf -hW $OUT 2>/dev/null | awk '$1=="Entry"{print $4}')
+	objdump --no-addresses -b binary -m i386 -D $OUT --adjust-vma="$OFF" --start-address="$START"
+	#objdump --visualize-jumps=color -b binary -m i386 -D $OUT --adjust-vma="$OFF" --start-address="$START"
+fi
+
+set +e
+ls -l $OUT
+strace -s 64 -rni ./$OUT 127.0.0.1
+echo ret $?
+exit
+
+%endif
+
+%define NTPPORT		123
+%define DNSPORT		53
+%define TIMEOUT		1
+%define SET		1
+%define LOCAL		0
+%define FRACTION	0
+%define PARSE		0
+%define DNS		1
+%define PRINT		0
+
+%ifndef IP
+	%if LOCAL
+		%define IP	127,0,0,1
+	%else
+		%define IP	130,60,204,10
+	%endif
+%endif
+
+%define PAUSE		0
+
+%define NTP_OFFSET 2_208_988_800 ; first day of unix vs NTP timestamp
+
+
+%define REG_OPT		1
+%define REG_SIMPLE	0
+%define stack_cleanup	0
+
+%define errarg	1
+%define errval	1
+
+%include "stdlib.mac"
+;%include "hardening.mac"
+ELF
+
+rinit
+
+%if PARSE
+	%if ELF_CUSTOM
+		BASE 0x3d589000
+	%else
+		pop	eax
+	%endif
+
+	rset	eax, -2
+	pop	esi
+	pop	esi
+	taint	esi
+	pop	ecx
+	pop	ecx
+	sub	ecx, esi
+	taint	ecx
+	push	edi
+	mov	edi, esp
+	taint	edi
+	ELF_PHDR 1
+
+	%if errarg
+		cmp	al, 2
+		jne	end1
+		rset	eax, 2
+	%endif
+	;reg
+
+	;zero	ebx
+	;mov	ecx, edx
+	;set	ebp, 10
+	.l:
+
+		lodsb
+		sub 	al, '0'
+		;reg
+
+		js .sign
+		imul	edx, edx, 10
+		add	edx, eax
+		taint	edx
+		loop	.l
+
+		.sign:
+		%if errval
+			cmp	esp, edi
+			jne	.f
+			test	edx, edx
+			jz	end1	
+			.f
+		%endif
+		xchg	eax, edx
+		stosb
+		taint	eax
+
+		taint	edx
+		cdq
+		
+	loop .l
+
+	rset	edx, 0
+	rset	eax, -2
+%else
+	%if ELF_CUSTOM
+	        BASE 0x3d67b000
+		inc	ah
+	        rset    eax, SYS_socket
+	%endif
+%endif
+
+socket:
+set	ebx, 2
+mov	ecx, ebx
+rset	ecx, 2
+socket	AF_INET, SOCK_DGRAM, IPPROTO_IP
+
+%define	SOCKET ebx
+xchg	eax, SOCKET
+rset	eax, 2
+rset	ebx, 3
+
+%if !PARSE
+	ELF_PHDR 1
+%endif
+
+%if TIMEOUT
+timeout:
+	alarm	SOCKET
+	rset	eax, 0
+%endif
+
+%if DNS
+	dnspacket:
+	alloca	64
+	push	esp
+
+	set	edx, 0x1000001
+	mov	[esp+6], edx
+
+	lea	edi, [esp+16]
+	mov	esi, query
+	memcpy	edi, esi, 18
+
+	taint	esi, edi
+
+	pop	esi
+	taint	esi
+	push	edx
+	push	AF_INET + DNSPORT*256*256*256
+	mov	edi, ue_ret
+	jmp	ue_func
+ue_ret:
+
+	;add	esp, 50+128+4
+%endif
+
+
+connect:
+
+	alloca	64
+	push	35 ; v4 client
+	mov	esi, esp
+
+%if !PARSE && !DNS
+	push4	IP
+%else
+	push	dword [esi+50+64+4]
+%endif
+;mov	ebp, esi
+push	AF_INET + NTPPORT*256*256*256
+%if DNS
+	add	edi, ue_ret2 - ue_ret
+%else
+	mov	edi, ue_ret
+%endif
+jmp	ue_func
+ue_ret2:
+taint	eax, ecx
+
+decode:
+%if FRACTION
+	%define stod	1
+	%if 0
+		movbe	ebp, [ecx+44]
+		;bswap	ebp
+		shr	ebp, 1
+		reg
+
+		push	ebp
+		fild	dword [esp]
+
+		push 	__?float32?__(2.147483648)
+		fdiv	dword [esp]
+		fist	dword [esp]
+		pop	ebp
+		taint	ebp
+	%else
+		movbe	eax, [ecx+44]
+		;bswap	eax
+		set	edx, 0
+		%if stod
+			rdump
+			reg
+			set	ebp, 4270 ;for settimeofday
+		%else
+			set	ebp, 4294673
+		%endif
+
+		div	ebp
+		xchg	eax, ebp
+		%if !stod
+			imul	ebp, eax, 10
+		%endif
+		taint	eax
+		%if 1
+			rset	edx, -3
+		%else
+			cdq
+			rset	edx, 0
+		%endif
+
+	%endif
+	reg
+%else
+	%define stod	1
+	;set	ebp, 0
+%endif
+
+movbe	eax, [ecx+40]
+end0:
+test	eax, eax
+jz	end2
+
+;bswap	eax
+sub	eax, NTP_OFFSET
+
+%if PRINT
+	%define RESULT edi
+	mov	edi, eax
+	printnum
+	rdump
+%else
+	%define RESULT eax
+%endif
+
+
+%if SET
+	set:
+	rdump
+	reg
+	push	ebp
+	push	RESULT
+	%if stod
+		settimeofday	esp, 0
+	%else
+		clock_settime CLOCK_REALTIME, esp
+	%endif
+	;reg
+	.dropstart:
+	;upcapx
+	;capdrop
+	.dropend:
+
+
+	%if PAUSE
+		pause
+	%else
+	end1:
+		%if stod
+			xchg	eax, ebx
+			zero	eax
+		%else
+			xchg	eax, ebx
+		%endif
+	end2:	inc	eax
+		int	0x80
+	%endif
+%else
+	%if 0 && FRACTION
+		printnum '.'
+		xchg	ebp, eax
+		; BROKEN - printnum is variable length
+		printnum
+	%else
+		printnum
+	%endif
+
+	sub	eax, edx
+	dec	ebx
+	end1:
+	xchg	eax, ebx
+	end2:
+	inc	eax
+	int	0x80
+%endif
+
+%include "regdump2.mac"
+
+ue_func:
+mov	ecx, esp
+;lea	ecx, [esp]
+connect	ebx, ecx, 16
+rset	eax, 0 ; OPTIMISTIC
+set	ecx, esi
+send	ebx, ecx, 48
+recv	ebx, ecx, 48
+jmp	edi
+
+%if DNS
+query:
+	db 4, "pool", 3, "ntp", 3, "org", 0, 0, 1, 0, 1
+%endif

@@ -1,0 +1,102 @@
+true : ;OUT=fizzbuzz; nasm -Lmes -l out -I asmlib/ -f bin -o $OUT $0 "$@" 2>&1 | grep -vF ' ... from macro ' && ls -l $OUT && chmod +x $OUT && objdump -Mintel -b binary -m i386 -D $OUT --adjust-vma=0x3d504000 --start-address=0x3d504019 && ./$OUT; echo ret $?; exit
+
+%define MAX	100
+%define	REG_OPT	1
+
+%include "stdlib.mac"
+ELF
+BASE 0x3d904000
+
+;rinit
+
+; eax: number
+; ebx: divisor/fd
+; ecx: string pointer
+; edx: remainder/string length
+; ebp: unused
+; esi: itoa length
+; edi: itoa saved eax
+
+;arg1 must not be negative
+%macro isdiv 1
+	push	eax
+	;push	ebx
+	push	edx
+	set	eax, %1
+	;set	ebx, %2
+	cdq
+	;reg
+	div	ebx
+	;reg
+	test	edx, edx
+	;cdq
+	pop	edx
+	;pop	ebx
+	pop	eax
+%endmacro
+
+
+.loop:
+	;inc	eax
+	set	edx, 1
+	push	0xA
+
+ELF_PHDR 1
+	set	ebx, 5
+	isdiv	eax
+	reg
+	jnz	.notfive
+	;printstrsafe `Buzz\n`
+	push	'Buzz'
+	add	edx, 4
+
+	.notfive:
+	reg
+	set	ebx, 3
+	isdiv	eax
+	jnz	.notthree
+	;printstrsafe `Fizz\n`
+	push	'Fizz'
+	add	edx, 4
+	.notthree:
+	reg
+	mov	ecx, esp
+	cmp	edx, 1
+	jnz	.next
+
+		mov	edi, eax
+		add	esp, -4
+		set	ebx, 10
+		set	esi, 0
+		set     edx, (`\n` - '0') % 255
+
+		.itoa:
+			add	dl, '0'
+			dec	ecx
+			mov	[ecx], dl
+			cdq
+			inc	esi
+			test	eax, eax
+			div	ebx
+			reg
+		jnz	.itoa
+
+		mov	eax, edi
+		xchg	edx, esi
+
+	.next:
+	;taint	eax, ebx, edx, ecx, esi, edi
+	;reg
+	push	eax
+	puts	ecx, edx
+	pop	eax
+	reg
+
+	cmp	eax, MAX
+	jl	START
+
+reg
+xchg	eax, ebx
+zero	ebx
+int	0x80
+%include "regdump2.mac"

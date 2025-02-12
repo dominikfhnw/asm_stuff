@@ -1,0 +1,110 @@
+%if 0
+
+OUT=sntp
+set -e
+if [ -n "${FULL-}" ]; then
+	nasm -I asmlib/ -f elf32 -g -o $OUT.o "$0" "$@" 2>&1 | grep -vF ': ... from macro '
+	ld -m elf_i386 -z noseparate-code $OUT.o -o $OUT
+	cp $OUT $OUT.full
+	ls -l $OUT.full
+	sstrip $OUT
+else
+	nasm -I asmlib/ -f bin -o $OUT "$0" "$@" 2>&1 | grep -vF ': ... from macro '
+fi
+ls -l $OUT
+chmod +x $OUT
+
+if [ -n "${FULL-}" ]; then
+	objdump -d $OUT.full
+else
+	OFF=$(  readelf -lW $OUT 2>/dev/null | awk '$2=="0x000000"{print $3}')
+	START=$(readelf -hW $OUT 2>/dev/null | awk '$1=="Entry"{print $4}')
+	objdump -b binary -m i386 -D $OUT --adjust-vma="$OFF" --start-address="$START"
+fi
+
+set +e
+strace -ni ./$OUT
+echo ret $?
+exit
+
+
+%endif
+
+%define PORT	123
+%define PAUSE	0
+%define SET	1
+%define LOCAL	0
+
+%ifndef IP
+%if LOCAL
+	%define IP	127,0,0,1
+%else
+	%define IP	130,60,204,10
+%endif
+%endif
+
+%define NTP_OFFSET 2_208_988_800 ; first day of unix vs NTP timestamp
+
+
+%define REG_OPT	1
+%include "stdlib.mac"
+ELF
+
+rinit
+
+%if ELF_CUSTOM
+	BASE 0x05ffb000
+	;rset	eax, 255
+	;rset	ebx, 1
+	add	eax, SYS_socket - 259
+	rset	eax, SYS_socket
+%endif
+
+;reg
+
+socket	AF_INET, SOCK_DGRAM, IPPROTO_IP
+
+ELF_PHDR 1
+reg
+
+xchg	eax, ebx
+mov	ecx, addr
+connect	ebx, ecx, 16
+
+alloca	44
+push	0x9
+;two bytes longer:
+;alloca	48
+;mov	[esp], byte 0x9
+mov	ecx, esp
+send	ebx, ecx, 48
+
+
+recv	ebx, ecx, 48
+mov	eax, [ecx+40]
+bswap	eax
+reg
+sub	eax, NTP_OFFSET
+
+reg
+%if SET
+	push	esi
+	push	eax
+	clock_settime CLOCK_REALTIME, esp
+	%if PAUSE
+		pause
+	%else
+		inc	ebx
+		xchg	eax, ebx
+		int	0x80
+	%endif
+%else
+	printnumexit
+%endif
+
+%include "regdump2.mac"
+
+addr:
+dw	AF_INET
+db	PORT/256, PORT % 256
+db	IP

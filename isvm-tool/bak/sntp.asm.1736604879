@@ -1,0 +1,293 @@
+%if 0
+
+
+OUT=sntp
+set -e
+set -o pipefail
+if [ -n "${FULL-}" ]; then
+	set -x
+	rm -f $OUT $OUT.o
+	nasm -I asmlib/ -f elf32 -o $OUT.o "$0" "$@" 2>&1 | grep -vF ': ... from macro '
+	#ld -m elf_i386 -z noseparate-code $OUT.o -o $OUT
+	if [ -n "${HARDEN-}" ]; then
+		ld -z ibt -z shstk --script link -m elf_i386 -u __stack_chk_fail -u __gets_chk -z relro -z now --build-id=none --orphan-handling=warn -z noseparate-code $OUT.o -o $OUT
+		readelf -Wa $OUT
+		cp $OUT $OUT.full
+		ls -l $OUT.full
+		cat rechead2 > s.c
+		elftoc -e $OUT >> s.c
+		echo -e '#include <stdio.h>\nint main(void) { fwrite(&foo, 1, offsetof(elf, _end), stdout);return(0); }' >> s.c
+		#strip --strip-dwo -wK'*' -R .hash -R .gnu.hash -R .gnu.version -R .gnu.version_r -R .got -R .got.plt -R .rel.plt -R .rel.got $OUT.full
+		sed -i 's/PT_NULL/PT_GNU_RELRO/' s.c
+		bash ./s.c
+		strace -ni ./cust 127.0.0.1 ||:
+		echo
+		echo "## CHECKSEC"
+		checksec --file=cust ||:
+		echo
+		echo "## HARDENING-CHECK"
+		hardening-check -c cust
+	else
+		ld -m elf_i386 -z noseparate-code $OUT.o -o $OUT
+		cp $OUT $OUT.full
+		ls -l $OUT.full
+	fi
+	#sstrip $OUT
+else
+	rm -f $OUT
+	#nasm -I asmlib/ -f bin -o $OUT "$0" "$@"
+	nasm -I asmlib/ -f bin -o $OUT "$0" "$@" 2>&1 | grep -vF ': ... from macro '
+fi
+ls -l $OUT
+chmod +x $OUT
+
+if [ -n "${FULL-}" ]; then
+	objdump -d $OUT.full
+else
+	OFF=$(  readelf -lW $OUT 2>/dev/null | awk '$2=="0x000000"{print $3}')
+	START=$(readelf -hW $OUT 2>/dev/null | awk '$1=="Entry"{print $4}')
+	objdump --no-addresses -b binary -m i386 -D $OUT --adjust-vma="$OFF" --start-address="$START"
+	#objdump -b binary -m i386 -D $OUT --adjust-vma="$OFF" --start-address="$START"
+fi
+
+set +e
+ls -l $OUT
+strace -s 64 -rni ./$OUT 127.0.0.1
+echo ret $?
+exit
+
+
+%endif
+
+%define PORT	123
+%define PAUSE	0
+%define TIMEOUT	1
+%define SET	1
+%define LOCAL	0
+
+%ifndef IP
+%if LOCAL
+	%define IP	127,0,0,1
+%else
+	%define IP	130,60,204,10
+%endif
+%endif
+
+%define NTP_OFFSET 2_208_988_800 ; first day of unix vs NTP timestamp
+
+
+%define REG_OPT	1
+%define REG_SIMPLE	0
+%define stack_cleanup	0
+%include "stdlib.mac"
+;%include "hardening.mac"
+ELF
+
+rinit
+
+%if ELF_CUSTOM
+	;BASE 0x05ffb000
+	;add	eax, SYS_socket - 259
+	;rset	eax, SYS_socket
+	BASE 0x3d909000
+	taint	eax
+%endif
+
+pop	esi
+pop	esi
+pop	esi
+pop	ecx
+pop	ecx
+sub	ecx, esi
+push	edi
+ELF_PHDR 1
+;reg
+
+mov	edi, esp
+;zero	ebx
+;mov	ecx, edx
+;set	ebp, 10
+.l:
+
+	lodsb
+	sub 	al, '0'
+	;reg
+
+	js .sign
+	imul	ebx, ebx, 10
+	add	ebx, eax
+	loop	.l
+
+	.sign:
+	xchg	eax, ebx
+	stosb
+	xchg	eax, ebx
+
+	taint	ebx
+	zero	ebx
+	
+loop .l
+
+;rdump
+;taint	edx
+;sub	edi, 4
+mov	edi, [edi-4]
+;reg
+taint	edi, eax, ebx, ecx, esi
+rset	eax, 0
+rset	ebx, 0
+
+;push	edi
+;puts	esp, 4
+
+;exit 0
+socket:
+set	ebx, 2
+mov	ecx, ebx
+rset	ecx, 2
+socket	AF_INET, SOCK_DGRAM, IPPROTO_IP
+
+%define	SOCKET ebx
+;reg
+
+xchg	eax, SOCKET
+rset	eax, 2
+
+%if TIMEOUT
+timeout:
+	alarm	SOCKET
+	rset	eax, 0
+%endif
+
+connect:
+push	edi
+db	0x68
+dw	AF_INET
+db      PORT/256, PORT % 256
+connect	SOCKET, esp, 16
+
+;connect	SOCKET, IP, PORT
+;reg
+
+packet:
+alloca	128
+;lea	esp, [esp-120]
+
+;push	 9 ; v1 client
+;push	19 ; v2 client
+push	35 ; v4 client
+;two bytes longer:
+;alloca	48
+;mov	[esp], byte 0x9
+mov	ecx, esp
+send:
+send	SOCKET, ecx, 48
+;reg
+
+recv:
+recv	SOCKET, ecx, 48
+decode:
+;puts	ecx, 48
+;mov	eax, [ecx+40]
+;set	eax, 0
+
+%define stod	1
+%if 0
+	movbe	ebx, [ecx+44]
+	;bswap	ebx
+	shr	ebx, 1
+	reg
+
+	push	ebx
+	fild	dword [esp]
+
+	;push 	__?float32?__(4.294967296)
+	push 	__?float32?__(2.147483648)
+	;push 	__?float32?__(2.147483648e12)
+	;push	1_000_000_000
+	fdiv	dword [esp]
+	;fld1
+	;fmul	dword [esp]
+	fist	dword [esp]
+	pop	ebx
+%else
+	movbe	eax, [ecx+44]
+	;bswap	eax
+	set	edx, 0
+	;set	ebx, 21474
+	%if stod
+		set	ebx, 4270 ;for settimeofday
+	%else
+		set	ebx, 4294673
+	%endif
+
+	div	ebx
+	xchg	eax, ebx
+	;set	ebx, 1000000
+	;imul	ebx, eax, 1000000
+	%if !stod
+		imul	ebx, eax, 10
+	%endif
+	;imul	ebx
+	;xchg	eax, ebx
+	taint	edx, eax, ebx
+
+%endif
+
+;mov	ebx, [ecx+44]
+reg
+;mov	ebx, eax
+taint	ebx
+;reg
+mov	eax, [ecx+40]
+;printnum
+test	eax, eax
+jz	end2
+bswap	eax
+sub	eax, NTP_OFFSET
+
+%if 0
+	%define RESULT edi
+	mov	edi, eax
+	printnum
+	rdump
+%else
+	%define RESULT eax
+%endif
+
+
+%if SET
+	set:
+	push	ebx
+	;push	1000000000-1
+	push	RESULT
+	%if stod
+		settimeofday	esp, 0
+	%else
+		clock_settime CLOCK_REALTIME, esp
+	%endif
+	;reg
+
+	%if PAUSE
+		pause
+	%else
+	end1:
+		%if stod
+			xchg	eax, ebx
+			zero	eax
+		%else
+			xchg	eax, ebx
+		%endif
+	end2:	inc	eax
+		int	0x80
+	%endif
+%else
+	printnumexit
+%endif
+
+%include "regdump2.mac"
+;fakeharden
+
+
+;section .note.foo.property
+;times	32 db	0

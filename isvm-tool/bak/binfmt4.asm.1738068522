@@ -1,0 +1,299 @@
+%if 0
+
+OUT=binfmt4
+set -e
+#set -o pipefail
+if [ "${FULL-1}" = 1 ]; then
+	#set -x
+	rm -f $OUT $OUT.o
+	nasm -I asmlib/ -f elf32 -o $OUT.o "$0" "$@" 2>&1 | grep -vF ': ... from macro '
+	#ld -m elf_i386 -z noseparate-code $OUT.o -o $OUT
+	if [ -n "${HARDEN-}" ]; then
+		ld -z ibt -z shstk --script link -m elf_i386 -u __stack_chk_fail -u __gets_chk -z relro -z now --build-id=none --orphan-handling=warn -z noseparate-code $OUT.o -o $OUT
+		readelf -Wa $OUT
+		cp $OUT $OUT.full
+		ls -l $OUT.full
+		cat rechead2 > s.c
+		elftoc -e $OUT >> s.c
+		echo -e '#include <stdio.h>\nint main(void) { fwrite(&foo, 1, offsetof(elf, _end), stdout);return(0); }' >> s.c
+		#strip --strip-dwo -wK'*' -R .hash -R .gnu.hash -R .gnu.version -R .gnu.version_r -R .got -R .got.plt -R .rel.plt -R .rel.got $OUT.full
+		sed -i 's/PT_NULL/PT_GNU_RELRO/' s.c
+		bash ./s.c
+		strace -ni ./cust 127.0.0.1 ||:
+		echo
+		echo "## CHECKSEC"
+		checksec --file=cust ||:
+		echo
+		echo "## HARDENING-CHECK"
+		hardening-check -c cust
+	else
+		FLAGS="--build-id=none --orphan-handling=warn --gc-sections --print-gc-sections" 
+		ld $FLAGS -m elf_i386 -z noseparate-code $OUT.o -o $OUT
+		cp $OUT $OUT.full
+		ls -l $OUT.full
+	fi
+	sstrip -z $OUT
+else
+	rm -f $OUT
+	#nasm -I asmlib/ -f bin -o $OUT "$0" "$@"
+	nasm -I asmlib/ -f bin -o $OUT "$0" "$@" 2>&1 | grep -vF ': ... from macro '
+fi
+ls -l $OUT
+chmod +x $OUT
+
+#DUMP="--no-addresses -Mintel"
+DUMP="-Mintel"
+if [ "${FULL-1}" = 1 ]; then
+	#objdump --visualize-jumps=color -d $OUT.full
+	objdump $DUMP -d $OUT.full
+else
+	OFF=$(  readelf2 -lW $OUT 2>/dev/null | awk '$2=="0x000000"{print $3}')
+	START=$(readelf2 -hW $OUT 2>/dev/null | awk '$1=="Entry"{print $4}')
+	objdump $DUMP -b binary -m i386 -D $OUT --adjust-vma="$OFF" --start-address="$START"
+	#objdump --visualize-jumps=color -b binary -m i386 -D $OUT --adjust-vma="$OFF" --start-address="$START"
+fi
+
+set +e
+ls -l $OUT
+#strace -s 64 -rni ./$OUT 127.0.0.1
+echo ret $?
+exit
+
+%endif
+
+; reg_simple: 202b
+; reg_deflt:  182b
+; reg_opt:    170b
+%define REG_OPT    1
+%define REG_ASSERT 0
+%define REG_SIMPLE 0
+
+; full ELF	+61b
+; errhandle	+13b
+; find_fd	+13b
+; close_fd	+07b
+; full_mmap	+01b
+; cleanup	+10b
+%define ERRHANDLE	1
+%define FIND_FD		1
+%define CLOSE_FD	1
+%define FULL_MMAP	1
+%define CLEANUP		1
+
+%imacro err 0-1 -4
+	%if ERRHANDLE
+	test	eax, eax
+	%if 1
+		js	error
+	%else
+		jns	%%next
+		set	ebx, 1
+		xchg	eax, ebx
+		int	0x80
+		%%next:
+	%endif
+	rset	eax, %1
+	%endif
+%endmacro
+
+%imacro XXassert 2
+	pushf
+	cmp	%1, %2
+	je	%%assert_ok
+	mov	eax, 0xDEADBEEF
+	mov	ebx, $
+	int3
+	%%assert_ok:
+	popf
+%endmacro
+
+%include "stdlib.mac"
+ELF
+rinit
+%if ELF_CUSTOM
+	BASE 0x68c0b000
+	rset	eax, 0xc0
+%endif
+
+%define SC_DEBUG 0
+
+%imacro ychg 2
+	rget	%1
+	%assign yval1 reg_val
+	rget	%2
+	%assign yval2 reg_val
+
+	rset	%1, yval2
+	rset	%2, yval1
+	xchg	%1, %2
+
+%endmacro
+set	edi, esp
+set	eax, 0
+set	ecx, -1
+repne	scasd
+repne	scasd
+taint	ecx
+;inc	edi
+;repne	scasd
+;set	eax, 2
+;repne	scasd
+;repne	scasd
+;reg
+;repne	scasd
+;reg
+ychg	esi, edi
+
+.loop:
+	taint	eax, ebx
+	lodsd
+	cmp	al, 2
+	lodsd
+jne	.loop
+
+
+ychg	eax, ebx
+call	hexprint
+
+;test	ebx, ebx
+;jz	.afterloop
+
+pause
+exit
+
+xchg	eax, edx
+lodsd
+neg	ecx
+reg
+taint	eax, edx, ecx
+;repne	scasd
+exit
+
+mmap_final:
+mmap	0x10000, 0xffff, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, 0, 0
+err	0x10000
+rdump
+
+ychg	eax, edi
+rdump
+memset:
+sub	ecx, 8
+memset	0x10000, 0x90, ecx
+;db	0xb8, 0x93, 0x31, 0xC0, 0x40
+set	eax, `\x93\x31\xc0\x40`
+stosd
+;db	0xb8, 0xCD, 0x80, 0x90, 0x90
+set	eax, `\xcd\x80\x90\x90`
+stosd
+taint	eax
+rdump
+
+memcpy1:
+%define errsize (error.end - error)
+;memcpy	(0x10000 + 0xffff - errsize), (error), errsize
+
+rdump
+%if FIND_FD
+find_fd:
+	dup	0
+	err	-2
+
+	ELF_PHDR 1
+	mov	ebx, eax
+	rset	ebx, -2
+	rdump
+
+	;lea	edi, [eax-1]
+	;rset	edi, -2
+	;rset	eax, -1
+closedup:
+	close	ebx
+	err	0
+%else
+	;ELF_PHDR 1
+	ud2
+	;set	edi, 3
+%endif
+
+fstat:
+reg
+alloca	48
+dec	ebx
+rdump
+fstat	ebx, esp
+rdump
+err	0
+mov	ecx, [esp+20]
+;taint	ecx
+rset	ecx, -3 ; com files are less than 64kb..
+reg
+sub	esp, -48
+;alloca	-48
+reg
+push	ecx
+mov	edi, ebx
+
+mmap:
+rdump
+mmap	0x30000, 0xffff, PROT_READ, MAP_PRIVATE | MAP_FIXED, edi, 0
+err	0x30000
+rdump
+
+%if CLOSE_FD
+close_fd:
+close	edi
+err	0
+rdump
+%endif
+
+
+memcpy2:
+pop	ecx
+reg
+memcpy	0x10000, 0x30000, ecx
+rdump
+munmap:
+munmap	0x30000, 0xffff
+err	0
+rdump
+
+%if CLEANUP
+cleanup:
+zero	eax, ebx, ecx, edx, esi, edi
+%endif
+jump:
+jmp	0x10000
+
+
+;%if ERRHANDLE
+	error:
+	xchg	eax, ebx
+	neg	ebx
+	;imul	ebx, eax, -1
+	taint	eax, ebx
+	exit ebx
+	.end:
+;%endif
+
+hexprint:
+rtaint
+pusha
+enter	16,0
+;mov	ebx, eax
+;push	`\n`
+;push	0
+;push	0
+set	edi, esp
+;set	ecx, 8
+tohex	ebx
+rdump
+set	eax, 10
+stosb
+puts	esp, 9
+leave
+popa
+ret
+
+%define SC_DEBUG 0
+%include "regdump2.mac"
+
