@@ -1,0 +1,87 @@
+%if 0
+
+OUT=print
+set -e
+nasm -I asmlib/ -f bin -o $OUT $0 "$@" 2>&1 | grep -vF ': ... from macro '
+ls -l $OUT
+chmod +x $OUT
+
+OFF=$(  readelf2 -lW $OUT 2>/dev/null | awk '$2=="0x000000"{print $3}')
+START=$(readelf2 -hW $OUT 2>/dev/null | awk '$1=="Entry"{print $4}')
+objdump -b binary -m i386 -D $OUT --adjust-vma=$OFF --start-address=$START
+
+set +e
+./$OUT
+echo ret $?
+exit
+
+
+%endif
+
+;true : ;nasm -I asmlib/ -l nasm.list -f bin -o print $0 && ls -l print && chmod +x print && objdump -b binary -m i386 -D print --adjust-vma=0x3d400000 --start-address=0x3d400019 && echo strace -i ./print foobar; echo ret $?; exit
+;; true.asm: Copyright (C) 2001 Brian Raiter <breadbox@muppetlabs.com>
+;; Licensed under the terms of the GNU General Public License, either
+;; version 2 or (at your option) any later version.
+;;
+;; To build:
+;;	nasm -f bin -o true true.asm && chmod +x true
+;;	ln true false
+
+%define DEBUG 1
+%define OPT 1
+%define PROPER 1
+
+%include "generic.mac"
+%include "regdump.mac"
+%include "elf.mac"
+%include "syscall.mac"
+
+BITS 32
+;START equ _start - 3
+;START equ s2
+
+		BASE	0x684a9000
+		ELF
+ff:		
+		;mov	edi, 8[esp]
+		;setfz	ecx, 4096
+		;push	edi			; edi, ecx, eax
+						; free: ebx, edx, esi, ebp
+		;setfz	edx, -1
+
+	;loopy:
+	;repne	scasb
+		ELF_PHDR 1
+		;;rwx
+		;reg
+		
+		;push	1000000000
+		push	100
+		fild	dword [esp]
+		fldpi
+		;fmul
+
+		doloop	8
+			fmul	st0, st1
+		endloop
+
+		;doloop 2
+		;;	fld st1
+		;	fmul
+		;endloop
+		;fxtract
+		alloca	32
+		fbstp	[esp]
+		reg
+		pop	ebx
+		;mov	esi, esp
+		mov	edi, esp
+		
+;%define reg_stack 0
+		;bcd	ebx
+		;reg
+		;puts	esp, 12
+		;dbg_regdump
+		exit 0
+
+%include "regdump2.mac"

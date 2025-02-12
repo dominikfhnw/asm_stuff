@@ -1,0 +1,98 @@
+true : ;yasm -f bin -o crc $0 && ls -l crc && chmod +x crc && objdump -b binary -m i386 -D crc  -z --adjust-vma=0x3d400000 --start-address=0x3d40001a && ./crc; echo ret $?; exit
+;; true.asm: Copyright (C) 2001 Brian Raiter <breadbox@muppetlabs.com>
+;; Licensed under the terms of the GNU General Public License, either
+;; version 2 or (at your option) any later version.
+;;
+;; To build:
+;;	nasm -f bin -o true true.asm && chmod +x true
+;;	ln true false
+
+BITS 32
+
+; input register as param %1 (except eax, ecx)
+; output as string to edi
+%macro tohex 1
+	push	8		; 8 hex digits
+	pop	ecx
+
+	.loop:			;do{
+	rol	%1, 4		; rotate high nibble to the bottom
+
+	mov	eax, %1 
+	and	al, 0x0f	; isolate low nibble
+	cmp	al, 10		; set CF according to digit>9
+	sbb	al, 0x69	; read CF, set CF and conditionally set AF, and wrap AL to > 99h
+	das			; magic, which happens to work
+	stosb			; *edi++ = al
+	loop	.loop		;}while(--ecx)
+%endmacro
+
+		org	0x3d400000
+
+		db	0x7F, "ELF"
+		dd	1
+		dd	0
+		dd	$$			; vaddr
+		dw	2
+		dw	3
+		dd	_start	-2		; garbage/filesz
+		dd	_start	-2		; start/memsz
+	_start:	dd	4
+		jmp	main
+times 13-$+_start db	0x90
+		db	169
+		dw	0x20
+		dw	1
+
+main:
+read:
+		push	3
+		pop	eax
+		xor	ebx,ebx
+		xor	edx,edx
+		inc	edx
+		push	0
+		mov	ecx, esp
+		int	0x80
+
+		test	eax,eax
+		jz	eof
+
+		%if 0
+		push	4
+		pop	eax
+		xor	ebx,ebx
+		inc	ebx
+		push	1
+		pop	edx
+		mov	ecx, esp
+		int	0x80
+		%endif
+
+		pop	eax
+		crc32	esi, al
+		
+		jmp	read
+
+eof:
+		sub	esp, 9
+		mov	edi, esp
+		tohex	esi
+		push	0x0a
+		pop	eax
+		stosb
+
+		push	4
+		pop	eax
+		xor	ebx,ebx
+		inc	ebx
+		push	9
+		pop	edx
+		mov	ecx, esp
+		int	0x80
+
+		xor	eax,eax
+		inc	eax
+		xor	ebx,ebx
+		int	0x80
+

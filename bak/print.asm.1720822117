@@ -1,0 +1,55 @@
+true : ;nasm -Iasmlib/ -f bin -o print $0 && ls -l print && chmod +x print && objdump -b binary -m i386 -D print  -z --adjust-vma=0x3d400000 --start-address=0x3d400019 && echo strace -i ./print foobar; echo ret $?; exit
+;; true.asm: Copyright (C) 2001 Brian Raiter <breadbox@muppetlabs.com>
+;; Licensed under the terms of the GNU General Public License, either
+;; version 2 or (at your option) any later version.
+;;
+;; To build:
+;;	nasm -f bin -o true true.asm && chmod +x true
+;;	ln true false
+
+;START equ _start - 3
+%include "stdlib.mac"
+
+BASE	0x3d499000
+
+ELF
+		pop	edi	;argc
+		; start of arg/env/aux string area
+		pop	edi
+		push	edi
+		;mov	ebx, edi
+		; find end of string area marked by a dword == 0
+		repne	scasd
+
+		; ecx contains 0 - (number of doublewords)
+		; multiply by -4 to get number of bytes
+		imul	edx, ecx, -4
+reg
+		; we're going back
+		std
+
+ELF_PHDR jump
+		; search for 0-bytes, replace them with newlines
+		.strrep:
+			repne	scasb
+			; set to -1 when going forward
+			mov     byte 1[edi], byte 0xa
+			; are we back at start?
+			cmp	edi, esp
+			;dbg_regdump
+		; jae: above or equal: edi >= ebx
+		; ja:  above:          edi >  ebx
+		ja	.strrep
+		
+		mov	al, SYS_write
+		inc	ebx
+		pop	ecx
+		int	0x80
+
+		xchg	eax, ebx
+		sub	ebx, edx
+		int	0x80
+	
+reg
+
+%include "regdump2.mac"

@@ -1,0 +1,191 @@
+#!/usr/bin/perl
+#use v5.34;
+#no warnings qw( experimental::smartmatch );
+my $file = do { local $/; <> };
+sub say{local$\="\n";print@_}
+
+sub dbg {
+	say STDERR @_ if 1;
+}
+
+sub esc2 {
+	my $in = shift;
+	my $next = shift;
+
+	if ($in >= 0x20 && $in < 0x7f) {
+		return chr $in;
+	}
+	return esc($in);
+}
+
+sub esc {
+	my $in = shift;
+	my $next = shift;
+
+	if($next =~ /[0-7]/){
+		return sprintf "\\%03o",$in;
+	}
+	else{
+		return sprintf "\\%o",$in;
+	}
+
+}
+
+sub escstr {
+	my $in = shift;
+	my $out = "";
+	for(split//,$in){
+		$out .= sprintf "\\%o",ord;
+		say "FF ",ord;
+	}
+
+	return $out;
+}
+
+my $out;
+my %escape = qw(
+	7	\a
+	8	\b
+	27	\e
+	12	\f
+	10	\n
+	13	\r
+	9	\t
+	11	\v
+	92	\\\
+);
+#use Data::Dumper; dbg Dumper(\%escape);
+my %freq;
+my %freq2;
+
+for(split//,$file){
+	$freq{ord()}++;
+}
+
+dbg "TOTAL: ",length($file);
+my $i;
+foreach my $name (keys %freq) {
+	my $e = esc($name,);
+	my $len = length($e);
+	my $freq = $freq{$name};
+	my $saving = ($freq * ($len-1)) - 1 - $len;
+	#dbg "$name $saving";
+	$freq2{$name} = $saving;
+}
+
+foreach my $name (reverse sort { $freq2{$a} <=> $freq2{$b} } keys %freq2) {
+	dbg "SAVE $name $freq2{$name}" if $freq2{$name} > 0;
+}
+
+foreach my $name (reverse sort { $freq{$a} <=> $freq{$b} } keys %freq) {
+	dbg "$name ",esc2($name),": ",$freq{$name} || 0;
+	$i++;
+	last if $i > 30;
+}
+@unused;
+$i = 0;
+for(a..z){
+	$_ = ord;
+	if($freq{$_} == 0){
+		dbg "$_ ",esc2($_),": ",$freq{$_} || 0;
+		push @unused, $_;
+		$i++;
+		#last if $i > 10;
+	}
+}
+for(A..Z){
+	$_ = ord;
+	if($freq{$_} == 0){
+		dbg "$_ ",esc2($_),": ",$freq{$_} || 0;
+		push @unused, $_;
+		$i++;
+		#last if $i > 10;
+	}
+}
+dbg "UNUSED: ",scalar(@unused);
+my $PRE, $POST;
+#say Dumper \%freq;
+my $zero = 0;
+my $fmts = 1;
+if($freq{37} > 5){
+	$fmts = 0;
+}
+if($freq{0} > 9){
+	$zero = 1;
+}
+dbg "FFF 0 $freq{0} % $freq{37}";
+#dbg "FFF ", scalar(@unused);
+#use Data::Dumper;
+#dbg Dumper(\@unused);
+my $replace1 = "";
+my $replace2 = "";
+
+sub repl {
+	my $input = shift;
+	my $chr = chr(shift @unused);
+	$replace1 .= $chr;
+	$replace2 .= chr($input);
+	$escape{$input} = $chr;
+	$POST = "|tr $replace1 '".escstr($replace2)."'";
+}
+
+if($zero){
+	if(@unused > 0){
+		repl(0);
+		##$escape{0} = chr(shift @unused);
+		#my $chr = chr(shift @unused);
+		#$replace1 .= $chr;
+		#$replace2 .= chr(0);
+		#$escape{0} = $chr;
+		#$POST = "|tr $escape{0} '\\0'";
+		#$POST = "|tr $replace1 '".escstr($replace2)."'";
+	}
+	else {
+		dbg "TURNING OFF ZERO";
+	}
+}
+#$escape{153} = chr(shift @unused);
+repl(153);
+repl(1);
+repl(179);
+repl(247);
+repl(243);
+repl(133);
+repl(128);
+if($fmts){
+	$escape{37} = '%%';
+}
+else {
+	$PRE = "'%s' ";
+}
+
+for(0..length($file)-1){
+	my $cord = ord(substr($file, $_, 1));
+	my $curr = substr($file, $_, 1);
+	my $next = substr($file, $_+1, 1);
+	
+	#dbg "F $cord";
+
+	if($cord == 39){
+		$out .= esc($cord, $next);
+	}
+	elsif($escape{$cord}){
+		#dbg "ESC $cord";
+		if($cord == 7 and $next !~ /[0-7]/){
+			$out .= esc($cord, $next);
+		}
+		else{
+			$out .= $escape{$cord};
+		}
+	}
+	elsif ($cord >= 0x20 && $cord < 0x7f) {
+		$out .= $curr;
+	}
+	else{
+		$out .= esc($cord, $next);
+	}
+}
+
+$out = "printf $PRE'$out'$POST";
+dbg "OUT: ",length($out);
+print "$out>${ARGV}b\ncmp -l $ARGV ${ARGV}b\n";
