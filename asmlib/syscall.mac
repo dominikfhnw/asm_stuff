@@ -5,7 +5,9 @@
 %define SYS_nanosleep	162
 %define SYS_mprotect	125
 %define SYS_mmap	90
+%define SYS_sigaction	67
 %define SYS_pause	29
+%define SYS_getpid	20
 %define SYS_time	13
 %define SYS_close	6
 %define SYS_open	5
@@ -37,7 +39,10 @@
 	set	eax, %1
 %endmacro
 
-%idefine sc_exec int 0x80
+%imacro sc_exec 0
+	int	0x80
+	taint	eax
+%endmacro
 
 %imacro sc_param1 1
 	sc_param ebx, %1
@@ -80,6 +85,7 @@
 	syscall	SYS_nanosleep, esp
 	pop	ebx
 	pop	ebx
+	rset	ebx, 0
 %endmacro
 
 %imacro time 0
@@ -94,11 +100,29 @@
 	syscall SYS_mprotect, %1, %2, %3
 %endmacro
 
+
+%define	SIG_DFL	0
+%define	SIG_IGN	1
+
+%macro signal 2
+	push	0
+	push	0
+	push	%2
+	syscall	SYS_sigaction, %1, esp, 0
+	pop	ecx
+	pop	ecx
+	pop	ecx
+	rset	ecx, 0
+	; ecx, edx = 0
+%endmacro
+
 ; add an extra param to get the hackish version (-2 bytes)
 %imacro rwx 0-1
 	%if %0 == 0
 		set	ebx, $$
-		lea     ecx, [ebx+START-$$]
+		;lea	ecx, [ebx+START-$$]
+		set	ecx, 0x10000-1
+
 		mprotect ebx, ecx, 7
 	%else
 		mprotect $$, -1, 7
@@ -111,6 +135,10 @@
 
 %imacro exit 0-1 0
 	syscall SYS_exit, %1
+%endmacro
+
+%imacro open 2
+	syscall SYS_open, %1, %2
 %endmacro
 
 %imacro read 3
@@ -126,6 +154,13 @@
 	write 1, %1, %2
 %endmacro
 
+%imacro putsexit 2
+	write	1, %1, %2
+	xchg	eax, ebx
+	sub	ebx, edx
+	sc_exec
+%endmacro
+
 %imacro inline_str 1
 	call	%%endstr
 	db	%1
@@ -133,7 +168,7 @@
 %endmacro
 
 %imacro printstr 1
-	pusha
+	;pusha
 	;%strcat string %1, `\n`
 	%strcat string %1
 	%strlen strlen string
@@ -142,7 +177,7 @@
 	%assign reg_keepflags 1
 	puts	pop, strlen
 	%assign reg_keepflags printstr_old
-	popa
+	;popa
 
 %endmacro
 
@@ -286,7 +321,7 @@ printstatic_func:
 		;call regdump
 		pop	ecx
 
-		puts ecx, edx
+		puts	ecx, edx
 		mov	4*9[esp], edi
 
 	%endif

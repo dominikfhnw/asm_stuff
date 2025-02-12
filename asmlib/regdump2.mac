@@ -10,7 +10,8 @@
 ; 1byte labels: 25 bytes	+14 bytes
 ; full  labels: 36 bytes	+11 bytes
 
-%define SEPARATE_STACK 1
+%define SEPARATE_STACK 0
+%define	FAKEHEX 0
 
 ; each of those adds 4 byte of code and 1*REGS of stack used
 ;%define SPACE 1
@@ -18,7 +19,7 @@
 %define EXTENDED 0
 %define FLAGS 1
 %define IP 1
-%define	STACK 0
+%define	STACK 5
 
 %define LABEL 2
 %define ALTLABEL 0
@@ -56,13 +57,27 @@ regdump:
 pusha
 pushf			; save processor state on stack
 
+%if 0
+;zero	eax, ebx, ecx, edx, ebp, esi, edi
+set	eax, -1
+set	ebx, -1
+set	ecx, -1
+set	edx, -1
+set	ebp, -1
+set	esi, -1
+set	edi, -1
+%endif
+
 %if SEPARATE_STACK
 	; patch the values on the stack for display purposes
 	; ESP
 	mov     esi, [esp+36]
 	mov	dword [esp+12], esi
 	; IP
+	%if IP
 	push	dword [esi]
+	%endif
+	taint	esi
 %endif
 
 %if LABEL || FLAGS
@@ -71,7 +86,9 @@ call	.begin
 	%if FLAGS
 	;db "FLG "
 	db "."
-	db "CrPrArZSTIDO"
+	; the "always 0" reserved registers have been set to X,
+	; as that slightly increases the compression rate of this code
+	db "CrPXAXZSTIDO"
 	db 10
 	%endif
 	%if LABEL == 2
@@ -101,8 +118,10 @@ call	.begin
 .begin:
 pop	esi
 mov	edx, esp
+taint	esi, edx
 %else
 mov	esi, esp
+taint	esi
 %endif
 
 %if ALTLABEL
@@ -119,6 +138,7 @@ pop	ebx
 
 add	esp, -TOTAL
 mov	edi, esp	; alloca
+taint	edi
 
 cld
 %if NEWLINE
@@ -189,7 +209,11 @@ doloop	REGS
 		lodsd
 		mov	ebx, eax
 
-		tohex	ebx
+		%if FAKEHEX
+			tohexf	ebx
+		%else
+			tohex	ebx
+		%endif
 
 	pop	ecx
 
@@ -225,7 +249,7 @@ puts	esp, TOTAL
 %else
 	add	esp, edx
 %endif
-%if SEPARATE_STACK
+%if SEPARATE_STACK && IP
 	pop	eax
 %endif
 popf

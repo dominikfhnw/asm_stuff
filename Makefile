@@ -1,14 +1,15 @@
 CC   = clang
-CC   = gcc
+CC   = gcc-12
 LD   = $(CC)
 LD   = ld
 LTO  = 0
 BITS = 32
 SRC  = hello.c
 OUT  = ab
-INTERP = 0
+INTERP = 1
+HARDEN = 1
 #PROG = DD DL_DEBUG DBG_INIT HACKY NOSTACK DYN NOSTART
-PROG = HACKY NOSTACK DYN NOSTART
+PROG = HACKY DYN NOSTART HARDEN
 
 ### end user config
 
@@ -30,8 +31,13 @@ else
 SCRIPT=o4
 endif
 
+ifeq ($(HARDEN),0)
 LDFLAGS0=--gc-sections --print-gc-sections -z norelro -z noseparate-code
 LDFLAGS=$(LDFLAGS0) --build-id=none --orphan-handling=warn --script=$(SCRIPT) --print-map
+else
+LDFLAGS0=--gc-sections --print-gc-sections -z noseparate-code -u __stack_chk_fail -u __gets_chk -z now -z ibt -z shstk -z relro
+LDFLAGS=$(LDFLAGS0) --build-id=none --orphan-handling=warn --print-map
+endif
 LDFLAGS+=-z nocopyreloc -V
 
 #CFLAGS_IPXE=-march=i386 -fomit-frame-pointer -fstrength-reduce -falign-jumps=1 -falign-loops=1 -falign-functions=1 -mpreferred-stack-boundary=2 -mregparm=3 -mrtd -freg-struct-return -m32 -fshort-wchar -Os -ffreestanding -fcommon -Wall -W -Wformat-nonliteral  -fno-dwarf2-cfi-asm -fno-exceptions  -fno-unwind-tables -fno-asynchronous-unwind-tables -Wno-address -Wno-stringop-truncation -Wno-address-of-packed-member -ffunction-sections
@@ -39,17 +45,22 @@ LDFLAGS+=-z nocopyreloc -V
 #CFLAGS0=-ffunction-sections -fdata-sections
 #CFLAGS0+=-falign-functions=1 -falign-loops=1 -fomit-frame-pointer
 #CFLAGS0+=-ffast-math -fno-exceptions -fomit-frame-pointer -funsafe-math-optimizations -fvisibility=hidden -march=pentium4
-CFLAGS=$(CFLAGS0) -fwhole-program -std=gnu99 -U_FORTIFY_SOURCE -masm=intel -fno-asynchronous-unwind-tables -fno-stack-clash-protection -fno-stack-protector -fcf-protection=none -fno-pie -fno-PIE -fno-pic -fno-PIC -fno-plt
+CFLAGS=$(CFLAGS0) -fwhole-program -std=gnu99 -U_FORTIFY_SOURCE -masm=intel -fno-asynchronous-unwind-tables -fno-stack-clash-protection -fno-stack-protector -fcf-protection=none -fno-PIC -fno-plt
 #CFLAGS=$(CFLAGS0) -fno-builtin -masm=intel -fno-pie -fno-PIE -fno-pic -fno-PIC -fno-plt
 #CFLAGS=$(CFLAGS0) -std=gnu99 -U_FORTIFY_SOURCE -fsanitize=address -fno-builtin -masm=intel -fno-pie -fno-PIE -fno-pic -fno-PIC -fno-plt
-WARNINGS=-Wall -Wextra -Wno-old-style-declaration -Wno-unused-function
+WARNINGS=-Wall -Wextra -Wno-old-style-declaration -Wno-unused-function -Wno-multichar
 
 ifeq ($(LD),$(CC))
 P := -Wl,--
 Q := -Wl,-z,
 LDFLAGS := $(subst --,$P,$(LDFLAGS))
 LDFLAGS := $(subst -z ,$Q,$(LDFLAGS))
-LEXTRA += -m$(BITS) -no-pie -nostartfiles
+LEXTRA += -m$(BITS) -nostartfiles
+ifeq ($(HARDEN),0)
+LEXTRA += -no-pie
+else
+LEXTRA += -pie
+endif
 else
 
 LIBDIR=$(shell $(CC) -m$(BITS) -print-search-dirs | sed -n '/^libraries: =/{s///;s/:/\n/g;p}' | xargs readlink -e | sort -u | sed 's/^/-L /')
@@ -72,6 +83,12 @@ LIBS=-lgcc -lgcc_s -lc
 #LIBS=-lasan -lubsan -lgcc -lgcc_s -lc
 LEXTRA=-m$(FORMAT) $(DL) $(LIBDIR) --as-needed --hash-style=sysv
 
+ifeq ($(HARDEN),0)
+LEXTRA += -no-pie
+else
+LEXTRA += -pie
+endif
+
 ifeq ($(INTERP),0)
 LOAD:=$(DL)
 DL=
@@ -81,9 +98,9 @@ endif
 
 endif
 
-MTUNE ?= i686
+MTUNE ?= i486
 ifeq ($(CC),gcc-12)
-EXTRA=-Os -mpreferred-stack-boundary=$(STACK)
+EXTRA=-Oz -mtune=$(MTUNE) -mpreferred-stack-boundary=$(STACK)
 endif
 ifeq ($(CC),gcc)
 EXTRA=-Os -mtune=$(MTUNE) -mpreferred-stack-boundary=$(STACK)
@@ -106,7 +123,11 @@ compile: $(SRC)
 	@#sed -E 's/libc\.so\.6[^"]+"/libm.so"/;s/R_386_GLOB_DAT/R_386_32/g;/ DT_(HASH|STRSZ|ADDRNUM|VER.*),/d' $(REC).c > $(REC)2.c
 	@#sed -E 's/R_386_GLOB_DAT/R_386_32/g;/ DT_(HASH|STRSZ|ADDRNUM|VER.*),/d' $(REC).c > $(REC)2.c
 	#@sed -E 's/libc\.so\.6[^"]+"/libm.so"/;s/R_386_GLOB_DAT/R_386_32/g;/ DT_(HASH|STRSZ|ADDRNUM|VER.*),/d' $(REC).c > $(REC)2.c
-	@sed -E 's/(dlsym.*)?libc\.so\.6([^"]+)?"/libm.so\\0"/;/R_386_GLOB_DAT/d; /DT_NEEDED/s/ 7 / 1 /; /dynstr/s/28/9/;/ DT_(NEEDED|HASH|STRSZ|ADDRNUM|VER.*|REL.*|DEBUG),/d; /0, 0.*STT_FUNC/d; ' $(REC).c > $(REC)2.c
+	#
+	#NONHARDEN		@sed -E 's/(dlsym.*)?libc\.so\.6([^"]+)?"/libm.so\\0"/;/R_386_GLOB_DAT/d; /DT_NEEDED/s/ 7 / 1 /; /dynstr/s/28/9/;/ DT_(NEEDED|HASH|STRSZ|ADDRNUM|VER.*|REL.*|DEBUG),/d; /0, 0.*STT_FUNC/d; ' $(REC).c > $(REC)2.c
+	#@sed -E 's/(dlsym.*)?libc\.so\.6([^"]+)?"/libm.so\\0"/;/R_386_GLOB_DAT/d; /DT_NEEDED/s/ 7 / 1 /; /dynstr/s/28/9/;/ DT_(NEEDED|HASH|STRSZ|ADDRNUM|VER.*|REL.*),/d; ' $(REC).c > $(REC)2.c
+	@sed -E 's/(dlsym.*)?libc\.so\.6/libm.so\\0\\0/;/R_386_GLOB_DAT/d; /DT_NEEDED/s/ 7 / 1 /; /dynstr/s/28/9/;/ DT_(NEEDED|HASH|STRSZ|ADDRNUM|VER.*|REL.*|TEXTREL),/d; ' $(REC).c > $(REC)2.c
+	#@sed -E 's/(dlsym.*)?libc\.so\.6/libm.so/;/R_386_GLOB_DAT/d; /XDT_NEEDED/s/ 7 / 1 /; /Xdynstr/s/28/9/;' $(REC).c > $(REC)2.c
 	@sed -i '3a #include "whiten.h"\n' $(REC)2.c
 	@sed -i '/DT_SYMTAB/a { DT_NEEDED, { 1 } },\n' $(REC)2.c
 	@$(CC) $(REC)2.c -o dorec

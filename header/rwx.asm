@@ -44,7 +44,7 @@ dec	ecx
 SYSCALL
 
 
-%if 1
+%if 0
 push 29
 pop eax
 SYSCALL

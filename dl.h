@@ -12,9 +12,13 @@ __attribute__((section (".dlptr"))) void* (*dlsym_ptr)(void * restrict, const ch
 #include <dlfcn.h>
 #include <stddef.h>
 
+#include "dnl.c"
+
 #define UNUSED __attribute__((unused))
 #define ABORT() __asm__("int 0x3")
 #define IMPORT(...) static IMPORT_GLOBAL(__VA_ARGS__)
+
+#define DNLOAD(lmap,name) dnload_find_symbol(lmap, __builtin_bswap32(name))
 
 // some macro magic from stackoverflow to call a function that has the
 // parameter count in the function name

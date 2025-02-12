@@ -19,6 +19,7 @@
 	%endif
 	set	ebx, 10
 	set	esi, 0
+	taint	ecx
 %endmacro
 
 %imacro __print_loop 0
@@ -39,17 +40,19 @@
 		test    eax,eax
 		div     ebx
 	jnz %%loop
+	taint	edx, ecx, eax, esi
 %endmacro
 
 %imacro __print_finish 0
 	mov     al, SYS_write
 	xchg	edx, esi
 	mov     bl, 1
-	int     0x80
+	sc_exec
 	%if stack_cleanup
 	sub	esp, -12
 	%endif
 	;dbg_regdump
+	taint	edx, ebx, esi
 %endmacro
 
 ; print EAX, newline
@@ -64,5 +67,5 @@
 %imacro __print_exit 0
 	xchg    eax, ebx
 	sub     ebx, edx
-	int     0x80
+	sc_exec
 %endmacro
