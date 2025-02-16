@@ -1,6 +1,6 @@
 %if 0
 set -euo pipefail
-set -x
+#set -x
 
 OUT=viert
 NASMOPT=
@@ -15,6 +15,7 @@ if [ -n "${FULL-1}" ]; then
 	nasm -g -I asmlib/ -f elf32 -o $OUT.o "$0" $NASMOPT "$@" 2>&1 | grep -vF ': ... from macro '
 	FLAGS="--print-map"
 	FLAGS="-Map=%"
+	FLAGS="-Map=% -Ttext-segment=0xC0DE0000"
 	ld $FLAGS -m elf_i386 -z noseparate-code $OUT.o -o $OUT
 	cp $OUT $OUT.full
 	ls -l $OUT.full
@@ -31,7 +32,7 @@ DUMP="-Mintel"
 if [ -n "${FULL-1}" ]; then
 	DUMP="$DUMP -j .text -j .rodata"
 	objdump $DUMP -d $OUT.full
-	nm -td -n $OUT.full | awk '/t A_/{sub(/A_/,"");if(name){print $1-size " " name};name=$3;size=$1}'|column -t | sort -nr
+	nm -td -n $OUT.full | awk '/t A_/{sub(/A_/,"");if(name){print $1-size " " name};name=$3;size=$1}'|column -tR1 | sort -nr
 else
 	#OFF=$(  readelf2 -lW $OUT 2>/dev/null | awk '$2=="0x000000"{print $3}')
 	OFF="0x10000"
@@ -58,17 +59,17 @@ exit
 %include "stdlib.mac"
 
 %ifndef JUMPNEXT
-%define JUMPNEXT	0
+%define JUMPNEXT	1
 %endif
 %ifndef HARDCODE
-%define HARDCODE	1
+%define HARDCODE	0
 %endif
-%if HARDCODE
+%if HARDCODE ; && (!WORD_TABLE && WORD_SIZE == 2)
 	%define	TABLE_OFFSET	STATIC_TABLE
 %else
 	%define	TABLE_OFFSET	edi
 %endif
-%define	CODE_OFFSET	esi
+%define	FORTH_OFFSET	esi
 %define	NEXT_WORD	eax
 
 %assign	WORD_COUNT	0
@@ -108,32 +109,40 @@ exit
 
 ; **** Macros ****
 %macro NEXT 0
+	%if JUMPNEXT
+		jmp lastnext
+	%else
+		realNEXT
+	%endif
+%endmacro
+
+%macro realNEXT 0
 	%%next:
 	%if !WORD_TABLE && WORD_SIZE == 4
 		%if WORD_FOOBEL
 			; + just a single register for NEXT
 			; - a bit bigger than the other solution
-			lea	CODE_OFFSET, [CODE_OFFSET+4]
-			jmp	[CODE_OFFSET]
+			lea	FORTH_OFFSET, [FORTH_OFFSET+4]
+			jmp	[FORTH_OFFSET]
 		%else
 			lodsWORD
 			jmp	NEXT_WORD
 		%endif
 	%elif !WORD_TABLE && WORD_SIZE == 2
 		%if 0
-			movzx	NEXT_WORD, word [CODE_OFFSET]
+			movzx	NEXT_WORD, word [FORTH_OFFSET]
 			add	NEXT_WORD, TABLE_OFFSET
-			;add	CODE_OFFSET, WORD_SIZE
-			inc	CODE_OFFSET
-			inc	CODE_OFFSET
+			;add	FORTH_OFFSET, WORD_SIZE
+			inc	FORTH_OFFSET
+			inc	FORTH_OFFSET
 			jmp	NEXT_WORD
 		%else
 			lodsWORD
 			cwde
 			%if WORD_ALIGN > 1
-				lea	NEXT_WORD, [WORD_ALIGN*NEXT_WORD+TABLE_OFFSET]
+				lea	NEXT_WORD, [WORD_ALIGN*NEXT_WORD+ASM_OFFSET]
 			%else
-				add	NEXT_WORD, TABLE_OFFSET
+				add	NEXT_WORD, ASM_OFFSET
 			%endif
 			jmp	NEXT_WORD
 		%endif
@@ -157,8 +166,8 @@ exit
 		jmp	NEXT_WORD
 		;DIRECT_EXECUTE reg
 	%elif 0
-		;movzx	NEXT_WORD, byte [CODE_OFFSET]
-		;inc	CODE_OFFSET
+		;movzx	NEXT_WORD, byte [FORTH_OFFSET]
+		;inc	FORTH_OFFSET
 		set	NEXT_WORD, 0
 		lodsWORD
 		push	dword [TABLE_OFFSET + 4*NEXT_WORD]
@@ -167,8 +176,8 @@ exit
 	%elif 0
 		; + freely choose which registers to use
 		; - every NEXT is 1 byte longer
-		movzx	NEXT_WORD, WORD_TYPE [CODE_OFFSET]
-		inc	CODE_OFFSET
+		movzx	NEXT_WORD, WORD_TYPE [FORTH_OFFSET]
+		inc	FORTH_OFFSET
 		taint	NEXT_WORD
 		jmp	[TABLE_OFFSET + 4*NEXT_WORD]
 	%else
@@ -221,7 +230,7 @@ exit
 
 %macro OVERRIDE_NEXT 1
 	push n_%[%1]
-	set CODE_OFFSET, esp
+	set FORTH_OFFSET, esp
 %endmacro
 
 %macro DIRECT_EXECUTE 1
@@ -236,6 +245,18 @@ exit
 	DIRECT_EXECUTE	%1
 %endmacro
 
+%imacro rspop 1
+	xchg	ebp, esp
+	pop	%1
+	xchg	ebp, esp
+%endmacro
+
+%imacro rspush 1
+	xchg	ebp, esp
+	push	%1
+	xchg	ebp, esp
+%endmacro
+
 %if LINCOM
 	[map all nasm.map]
 	jmp _start
@@ -246,6 +267,7 @@ exit
 DEF "exit", no_next
 	exit	x
 
+%define	ASM_OFFSET  DEF0
 ; previous definition can never return, so no need for NEXT
 DEF "bad", no_next
 	printstr `\n?OP`
@@ -275,7 +297,7 @@ DEF "reg"
 	%endif
 
 lastnext:
-	NEXT
+	realNEXT
 
 A_lastentry:
 
@@ -285,7 +307,7 @@ SECTION .rodata align=1 follows=.text
 FORTH:
 	f_heya
 	f_heya
-	WORD 12
+	;WORD 12
 	f_heya
 	f_exit
 
@@ -316,35 +338,43 @@ SECTION .rodata align=1 follows=.text
 SECTION .text align=1
 rinit
 _start:
+;mmap	0x10000, 0xffff, PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, 0, 0
+;rset	eax, 0x10000
+;mmap	0x20000, 0xffff, PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, 0, 0
+;rset	eax, 0x10000
+;lea	ebx, [ebx*2]
+;add	ebx, ebx
+
 
 %if !WORD_TABLE && WORD_SIZE == 4
-	set	CODE_OFFSET, FORTH
+	set	FORTH_OFFSET, FORTH
 	%if WORD_FOOBEL
-		jmp	[CODE_OFFSET]
+		jmp	[FORTH_OFFSET]
 	%else
 		jmp	lastnext
 	%endif
 %elif !WORD_TABLE && WORD_SIZE == 2
-	set	CODE_OFFSET, FORTH
+	set	FORTH_OFFSET, FORTH
 	%if HARDCODE
-		%define	TABLE_OFFSET  DEF0
 	%else
+		; this is slightly confusing, as we're misusing the TABLE_OFFSET
+		; variable for ASM_OFFSET
 		set	TABLE_OFFSET, DEF0
 	%endif
 	;movd	mm0, TABLE_OFFSET
-	;movd	mm1, CODE_OFFSET
+	;movd	mm1, FORTH_OFFSET
 	jmp	lastnext
 %else
 	%if !HARDCODE
 		set	TABLE_OFFSET, STATIC_TABLE
 		%assign	OFF FORTH-STATIC_TABLE
-		lea	CODE_OFFSET, [TABLE_OFFSET+OFF]
-		taint	CODE_OFFSET
+		lea	FORTH_OFFSET, [TABLE_OFFSET+OFF]
+		taint	FORTH_OFFSET
 	%else
-		set	CODE_OFFSET, FORTH
+		set	FORTH_OFFSET, FORTH
 	%endif
 	;movd	mm0, TABLE_OFFSET
-	;movd	mm1, CODE_OFFSET
+	;movd	mm1, FORTH_OFFSET
 	jmp	lastnext
 %endif
 
