@@ -2,8 +2,9 @@
 set -euo pipefail
 #set -x
 
+ORG="0x01000000"
 OUT=viert
-NASMOPT=
+NASMOPT="-DORG=$ORG"
 if [ -n "${LINCOM-}" ]; then
 	OUT="$OUT.com"
 	NASMOPT="-DLINCOM=1"
@@ -12,14 +13,14 @@ fi
 
 if [ -n "${FULL-1}" ]; then
 	rm -f $OUT $OUT.o
-	nasm -g -I asmlib/ -f elf32 -o $OUT.o "$0" $NASMOPT "$@" 2>&1 | grep -vF ': ... from macro '
+	time nasm -g -I asmlib/ -f elf32 -o $OUT.o "$0" $NASMOPT "$@" 2>&1 | grep -vF ': ... from macro '
 	FLAGS="--print-map"
 	FLAGS="-Map=%"
-	FLAGS="-Map=% -Ttext-segment=0x01000000"
-	ld $FLAGS -m elf_i386 -z noseparate-code $OUT.o -o $OUT
+	FLAGS="-Map=% -Ttext-segment=$ORG"
+	time ld $FLAGS -m elf_i386 -z noseparate-code $OUT.o -o $OUT
 	cp $OUT $OUT.full
 	ls -l $OUT.full
-	sstrip $OUT
+	time sstrip $OUT
 else
 	rm -f $OUT
 	nasm -I asmlib/ -f bin -o $OUT "$0" $NASMOPT "$@" 2>&1 | grep -vF ': ... from macro '
@@ -31,8 +32,8 @@ DUMP="-Mintel"
 #DUMP="--no-addresses -Mintel"
 if [ -n "${FULL-1}" ]; then
 	DUMP="$DUMP -j .text -j .rodata"
-	objdump $DUMP -d $OUT.full
-	nm -td -n $OUT.full | awk '/t A_/{sub(/A_/,"");if(name){print $1-size " " name};name=$3;size=$1}'|column -tR1 | sort -nr
+	time objdump $DUMP -d $OUT.full
+	time nm -td -n $OUT.full | mawk '/. A_/{sub(/A_/,"");if(name){print $1-size " " name};name=$3;size=$1}'|column -tR1 | sort -nr
 else
 	#OFF=$(  readelf2 -lW $OUT 2>/dev/null | awk '$2=="0x000000"{print $3}')
 	OFF="0x10000"
@@ -48,6 +49,10 @@ echo ret $?
 exit
 
 %endif
+
+; 52 byte for ELF header, 32 byte for each program header
+%define ELF_HEADER_SIZE (52 + 1*32)
+;mov	eax, $$ - ELF_HEADER_SIZE - ORG
 
 %define REG_OPT		1
 %define REG_SEARCH	1
@@ -78,28 +83,35 @@ exit
 %ifndef WORD_ALIGN
 %define WORD_ALIGN	1
 %endif
-%ifndef WORD_TABLE
-%define WORD_TABLE	0
-%endif
+;%ifndef WORD_TABLE
+;%define WORD_TABLE	0
+;%endif
 %ifndef WORD_FOOBEL
 %define WORD_FOOBEL	0
 %endif
 %ifndef WORD_SIZE
 %define WORD_SIZE	1
 %endif
-%ifndef WORD_SMALLTABLE
-%define WORD_SMALLTABLE 1
-%endif
+;%ifndef WORD_SMALLTABLE
+;%define WORD_SMALLTABLE 1
+;%endif
 
 %if   WORD_SIZE == 1
+
+	%define WORD_TABLE	1
+	%define WORD_SMALLTABLE 1
 	%define lodsWORD lodsb
 	%define WORD_TYPE byte
 	%define WORD_DEF db
 %elif WORD_SIZE == 2
+	%define WORD_TABLE	0
+	%define WORD_SMALLTABLE 0
 	%define lodsWORD lodsw
 	%define WORD_TYPE word
 	%define WORD_DEF dw
 %elif WORD_SIZE == 4
+	%define WORD_TABLE	0
+	%define WORD_SMALLTABLE 0
 	%define lodsWORD lodsd
 	%define WORD_TYPE dword
 	%define WORD_DEF dd
@@ -147,23 +159,101 @@ exit
 		%endif
 
 	%elif WORD_SMALLTABLE
-		%ifnidn NEXT_WORD,eax
-			%error NEXT__WORD is not eax
-		%endif
-		%if WORD_SIZE == 1
+		;mov	eax, TABLE_OFFSET
+		;lodsWORD
+		;%if WORD_ALIGN > 1
+		;	%error not working atm
+		;	;lea	NEXT_WORD, [WORD_ALIGN*NEXT_WORD+ASM_OFFSET]
+		;%endif
+		;jmp	NEXT_WORD
+		
+		%if 0
 			set	NEXT_WORD, 0
-		%endif
-		lodsWORD
-		%if WORD_SIZE == 2
+			lodsWORD
+			movzx	eax, al
+			%define OFF (STATIC_TABLE - $$ + ELF_HEADER_SIZE)
+			movzx	NEXT_WORD, word [TABLE_OFFSET + 2*NEXT_WORD + OFF]
+			add	NEXT_WORD, TABLE_OFFSET
+			jmp	NEXT_WORD
+		%elif 0
+			set	NEXT_WORD, 0
+			lodsWORD
+			%define OFF (STATIC_TABLE - $$ + ELF_HEADER_SIZE)
+			;mov	eax, [TABLE_OFFSET + 2*NEXT_WORD + OFF]
+			;mov	ax, [TABLE_OFFSET + 2*NEXT_WORD + OFF]
+			;mov	ax, [STATIC_TABLE + 2*NEXT_WORD]
+
+			movzx	eax, word [STATIC_TABLE + 2*NEXT_WORD]
+			;movzx	eax, word [TABLE_OFFSET + 2*NEXT_WORD + OFF]
+
+			add	NEXT_WORD, TABLE_OFFSET
+			jmp	NEXT_WORD
+
+		%elif 0
+			;mov	NEXT_WORD, edi
+			set	NEXT_WORD, 0
+			lodsWORD
+			;cbw
+			;cwde
+			;movzx	eax, byte [esi]
+			;inc	esi
+			;add	eax, al
+			;push	ax
+			;add	eax, eax
+			;add	eax, STATIC_TABLE
+			;movzx	eax, al
+			%define OFF (STATIC_TABLE - $$ + ELF_HEADER_SIZE)
+			mov	eax, [STATIC_TABLE + 2*NEXT_WORD]
+			;mov	eax, [edi+2*eax+OFF]
 			cwde
+			;movzx	eax, word [TABLE_OFFSET + 2*NEXT_WORD + OFF]
+			add	eax, TABLE_OFFSET
+			;mov	ax, [TABLE_OFFSET + 2*NEXT_WORD + OFF]
+			;mov	ax, [STATIC_TABLE + 2*NEXT_WORD]
+
+			;set	eax, edi
+			;movzx	eax, word [STATIC_TABLE + 2*NEXT_WORD]
+
+			;add	NEXT_WORD, TABLE_OFFSET
+			jmp	NEXT_WORD
+
+		%else	; striped table
+			mov	ecx, edi
+			lodsWORD
+			push	eax
+			;mov	ebx, STATIC_TABLE
+			mov	ebx, edi
+			mov	bl, 0xA4
+			xlat
+			mov	cl, al
+			inc	bh
+			pop	eax
+			xlat
+			mov	ch, al
+			jmp	ecx
 		%endif
-		;mov	ax, word [TABLE_OFFSET + 2*NEXT_WORD]
-		movzx	eax, word [TABLE_OFFSET + 2*NEXT_WORD]
-		reg
-		add	NEXT_WORD, DEF0
-		reg
-		jmp	NEXT_WORD
-		;DIRECT_EXECUTE reg
+;		;mov	ax, word [TABLE_OFFSET + 2*NEXT_WORD]
+
+
+;		%ifnidn NEXT_WORD,eax
+;			%error NEXT__WORD is not eax
+;		%endif
+;		%if WORD_SIZE == 1
+;			set	NEXT_WORD, 0
+;		%endif
+;		lodsWORD
+;		%if WORD_SIZE == 2
+;			cwde
+;		%endif
+;		;mov	ax, word [TABLE_OFFSET + 2*NEXT_WORD]
+;		movzx	eax, word [TABLE_OFFSET + 2*NEXT_WORD]
+;		%if 1
+;			add	NEXT_WORD, DEF0
+;			jmp	NEXT_WORD
+;		%else
+;			jmp	[NEXT_WORD + DEF0]
+;		%endif
+;		;DIRECT_EXECUTE reg
 	%elif 0
 		;movzx	NEXT_WORD, byte [FORTH_OFFSET]
 		;inc	FORTH_OFFSET
@@ -215,6 +305,7 @@ exit
 	DEF%[WORD_COUNT]:
 	%define %[n_%tok(%1)] %[WORD_COUNT]
 	%define %[f_%tok(%1)] WORD %[WORD_COUNT]
+	%warning NEW DEFINITION: DEF%[WORD_COUNT] %1
 	rtaint
 	%if !WORD_SMALLTABLE && ( WORD_SIZE == 1 || WORD_TABLE )
 		rset	NEXT_WORD, WORD_COUNT
@@ -226,7 +317,7 @@ exit
 	%if !WORD_TABLE && WORD_SIZE == 4
 		WORD_DEF DEF%1
 	%elif !WORD_TABLE && WORD_SIZE == 2
-		WORD_DEF (DEF%1 - DEF0 + 0x54)/WORD_ALIGN
+		WORD_DEF (DEF%1 - DEF0 + ELF_HEADER_SIZE)/WORD_ALIGN
 	%else
 		WORD_DEF %1
 	%endif
@@ -279,11 +370,12 @@ DEF "exit", no_next
 
 %define	ASM_OFFSET  DEF0
 ; previous definition can never return, so no need for NEXT
+%if 0
 DEF "bad", no_next
 	printstr `\n?OP`
 	hlt
 	;EXECUTE2 reg, exit
-
+%endif
 
 DEF "heya", no_next
 	printstr "HEYA"
@@ -291,12 +383,14 @@ DEF "heya", no_next
 DEF "EXIT"
 	rspop	FORTH_OFFSET
 
+%if 0
 DEF "sleep"
 	sleep 1
 DEF "rwx"
 	rwx
 DEF "pause"
 	pause
+%endif
 %if 0
 DEF "reg"
 	; TODO: this is a mess
@@ -319,7 +413,7 @@ DEF "triple"
 	f_heya
 	f_EXIT
 
-DEF "DOCOL"
+DEF "DOCOL", no_next
 	rspush	FORTH_OFFSET
 	;lea	FORTH_OFFSET, [eax + (%%docol_code - %%docol_start)]
 	; normal table lookup: WORD_TABLE==1
@@ -336,7 +430,8 @@ DEF "DOCOL"
 	%endif
 
 	;NEXT
-DEF "NEXT", no_next
+;DEF "NEXT", no_next
+A_NEXT:
 lastnext:
 	realNEXT
 
@@ -344,9 +439,9 @@ lastnext:
 
 ; **** Forth code ****
 SECTION .rodata align=1 follows=.text
+A_FORTH:
 FORTH:
 	f_triple
-	f_sleep
 	f_triple
 	;f_EXIT
 	f_exit
@@ -354,14 +449,16 @@ FORTH:
 
 ; **** Jump table ****
 SECTION .rodata align=1 follows=.text
-%if WORD_SIZE == 1 || WORD_TABLE
+%if WORD_TABLE
 	STATIC_TABLE:
+	A_STATIC_TABLE:
 	%warning WORD COUNT: WORD_COUNT
 	%assign	i 0
 	%rep	WORD_COUNT
 		%if WORD_SMALLTABLE
-			dw (DEF%[i] - DEF0)/WORD_ALIGN
+			dw (DEF%[i] - DEF0 + ELF_HEADER_SIZE)/WORD_ALIGN
 		%else
+			%error unsupported atm
 			dd DEF%[i]
 		%endif
 		%assign i i+1
@@ -371,25 +468,32 @@ SECTION .rodata align=1 follows=.text
 	%else
 		;times (256-WORD_COUNT) dd DEF1
 	%endif
+	A_END_TABLE:
 %endif
 
 
 ; **** Assembler code ****
 SECTION .text align=1
+_start:
+
 DEF "RETURNSTACK_INIT", no_next
 rinit
-_start:
-;mmap	0x10000, 0xffff, PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, 0, 0
-mmap	0xffff, 0xffff, PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, 0, 0
-;mmap	0x10000, 0xffff, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, 0, 0
-;mmap	0x10000, 0xffff, PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, 0, 0
+%if 0
+	;mmap	0x10000, 0xffff, PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, 0, 0
+	mmap	0xffff, 0xffff, PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, 0, 0
+	;mmap	0x10000, 0xffff, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, 0, 0
+	;mmap	0x10000, 0xffff, PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, 0, 0
+	;A_INIT:
+	add	eax, eax
+	taint	eax
+	ychg	eax, ebp
+%else
+	enter	0xFFFF, 0
+	; data stack should be the unlimited segment normally. +2 bytes
+	;xchg	esp, ebp
+%endif
+
 DEF "INIT", no_next
-add	eax, eax
-taint	eax
-ychg	eax, ebp
-;lea	ebp, [2*eax]
-
-
 
 %if !WORD_TABLE && WORD_SIZE == 4
 	set	FORTH_OFFSET, FORTH
@@ -398,41 +502,44 @@ ychg	eax, ebp
 	%else
 		jmp	lastnext
 	%endif
-%elif !WORD_TABLE && WORD_SIZE == 2
+;%elif !WORD_TABLE && WORD_SIZE == 2
+%else
 	;shl	eax,8
 
 	;mov	TABLE_OFFSET, eax
 	%if HARDCODE
+		%error not supported atm
 	%else
 		; this is slightly confusing, as we're misusing the TABLE_OFFSET
 		; variable for ASM_OFFSET
-		;set	TABLE_OFFSET, 0x10000
 		rset	TABLE_OFFSET, 0
-		set	TABLE_OFFSET, 0x01000000
+		set	TABLE_OFFSET, ORG
 	%endif
-	;set	eax, FORTH - 2
-	;add	eax, (FORTH-0xC0DE0000)
+
+	%define OFF (FORTH - $$ - 2 + ELF_HEADER_SIZE)
 	mov	eax, TABLE_OFFSET
-	mov	al, 0xE2
-	;movd	mm0, TABLE_OFFSET
-	;movd	mm1, FORTH_OFFSET
-	;jmp	lastnext
+	mov	al, OFF
+	;lea	eax, [TABLE_OFFSET  + OFF]
 	DOCOL
-%else
-	%if !HARDCODE
-		set	TABLE_OFFSET, STATIC_TABLE
-		%assign	OFF FORTH-STATIC_TABLE
-		lea	FORTH_OFFSET, [TABLE_OFFSET+OFF]
-		taint	FORTH_OFFSET
-	%else
-		set	FORTH_OFFSET, FORTH
-	%endif
-	;movd	mm0, TABLE_OFFSET
-	;movd	mm1, FORTH_OFFSET
-	jmp	lastnext
+;%else
+;	%if !HARDCODE
+;		rset	TABLE_OFFSET, 0
+;		set	TABLE_OFFSET, ORG
+;		;set	TABLE_OFFSET, STATIC_TABLE
+;		%assign	OFF FORTH-STATIC_TABLE-2
+;		lea	NEXT_WORD, [TABLE_OFFSET+OFF]
+;		taint	FORTH_OFFSET
+;		;set	NEXT_WORD, FORTH-2
+;	%else
+;		%error not supported atm
+;		set	FORTH_OFFSET, FORTH
+;	%endif
+;	;movd	mm0, TABLE_OFFSET
+;	;movd	mm1, FORTH_OFFSET
+;	;jmp	lastnext
+;	DOCOL
 %endif
 
-A_eof:
 %include "regdump2.mac"
 
 
