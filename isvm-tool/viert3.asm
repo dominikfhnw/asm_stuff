@@ -4,7 +4,7 @@ set -euo pipefail
 
 ORG="0x01000000"
 OUT=viert
-NASMOPT="-DORG=$ORG"
+NASMOPT="-DORG=$ORG -Werror=label-orphan"
 if [ -n "${LINCOM-}" ]; then
 	OUT="$OUT.com"
 	NASMOPT="-DLINCOM=1"
@@ -134,7 +134,8 @@ exit
 ; **** Macros ****
 %macro NEXT 0
 	%if JUMPNEXT
-		jmp short lastnext
+		;jmp short lastnext
+		ret
 	%else
 		realNEXT
 	%endif
@@ -341,6 +342,16 @@ exit
 	%assign WORD_COUNT WORD_COUNT+1
 %endmacro
 
+%macro DEFFORTH 1
+	DEF %1, no_next
+	DOCOL
+%endmacro
+
+; TODO: use nasm context stack?
+%macro ENDDEF 0
+	f_EXIT
+%endmacro
+
 %macro WORD 1
 	%if !WORD_TABLE && WORD_SIZE == 4
 		WORD_DEF DEF%1
@@ -387,6 +398,16 @@ exit
 	xchg	ebp, esp
 %endmacro
 
+%imacro lit 1
+	%if %1 >= 0 && %1 < 256
+		f_lit8
+		db %1
+	%else
+		f_lit32
+		dd %1
+	%endif
+%endmacro
+
 %if LINCOM
 	[map all nasm.map]
 	jmp	_start
@@ -395,23 +416,21 @@ exit
 ; **** Codeword definitions ****
 
 ; first definition does not need a NEXT
-DEF "exit", no_next
-	exit	x
+DEF "EXIT", no_next
+	rspop	FORTH_OFFSET
 
+; TODO: right place
 %define	ASM_OFFSET  DEF0
-; previous definition can never return, so no need for NEXT
+
+;DEF "exit", no_next
+;	exit	x
+
 %if 0
 DEF "bad", no_next
 	printstr `\n?OP`
 	hlt
 	;EXECUTE2 reg, exit
 %endif
-
-DEF "heya", no_next
-	printstr "HEYA"
-
-DEF "EXIT"
-	rspop	FORTH_OFFSET
 
 %if 0
 DEF "sleep"
@@ -436,12 +455,83 @@ DEF "reg"
 	%endif
 %endif
 
-DEF "triple"
-	DOCOL
+DEF "lit8"
+	xor	eax, eax
+	lodsb
+	push	eax
+
+DEF "lit32"
+	lodsd
+	push	eax
+
+DEF "sp_at"
+	push	esp
+
+DEF "add"
+	pop	eax
+	pop	ebx
+	add	eax, ebx
+	push	eax
+
+DEF "swap"
+	pop	ebx
+	pop	eax
+	push	ebx
+	push	eax
+
+DEF "dup"
+	pop	eax
+	push	eax
+	push	eax
+
+DEF "drop"
+	pop	eax
+
+DEF "neg"
+	pop	eax
+	neg	eax
+	push	eax
+
+DEF "equ"
+	pop	eax
+	pop	ebx
+	cmp	eax, ebx
+	xor	eax, eax
+	sete	al
+	push	eax
+	
+DEF "syscall3"
+	pop	eax
+	pop	ebx
+	pop	ecx
+	pop	edx
+	int	0x80
+	push	eax
+
+NEXT
+
+; **** (almost) all primitives finished (TODO:fix that) ****
+DEFFORTH "exit"
+	lit	1
+	f_syscall3
+;ENDDEF ;does not return
+
+DEFFORTH "heya"
+	lit	0x41484148
+	f_sp_at
+	lit	4 ;len
+	f_swap
+	lit	1 ;stdout
+	lit	4 ;write
+	f_syscall3
+	;f_drop
+ENDDEF
+
+DEFFORTH "triple"
 	f_heya
 	f_heya
 	f_heya
-	f_EXIT
+ENDDEF
 
 DEF "DOCOL", no_next
 	rspush	FORTH_OFFSET
@@ -472,7 +562,8 @@ SECTION .rodata align=1 follows=.text
 A_FORTH:
 FORTH:
 	f_triple
-	f_triple
+	;f_sc
+	;f_triple
 	;f_EXIT
 	f_exit
 
@@ -534,9 +625,13 @@ A_INIT:
 	%else
 		jmp	lastnext
 	%endif
-%elif !WORD_TABLE && WORD_SIZE == 1
+%elif 0 && !WORD_TABLE && WORD_SIZE == 1
+	rset	TABLE_OFFSET, 0
 	set	TABLE_OFFSET, ORG
-	set	eax, FORTH - 2
+	%define OFF (FORTH - $$ - 2 + ELF_HEADER_SIZE)
+	;set	eax, FORTH - 2
+	mov	eax, TABLE_OFFSET
+	mov	al, OFF
 	DOCOL
 %else
 	;shl	eax,8
