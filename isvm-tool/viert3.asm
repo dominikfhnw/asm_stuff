@@ -50,10 +50,6 @@ exit
 
 %endif
 
-; 52 byte for ELF header, 32 byte for each program header
-%define ELF_HEADER_SIZE (52 + 1*32)
-;mov	eax, $$ - ELF_HEADER_SIZE - ORG
-
 %define REG_OPT		1
 %define REG_SEARCH	1
 %define REG_ASSERT	0
@@ -96,8 +92,16 @@ exit
 ;%define WORD_SMALLTABLE 1
 ;%endif
 
-%if   WORD_SIZE == 1
+; XXX quick&dirty hack
+%if   WORD_SIZE == 0
+	%define WORD_TABLE	0
+	%define WORD_SMALLTABLE 0
+	%define lodsWORD lodsb
+	%define WORD_TYPE byte
+	%define WORD_DEF db
+	%define WORD_SIZE 1
 
+%elif WORD_SIZE == 1
 	%define WORD_TABLE	1
 	%define WORD_SMALLTABLE 1
 	%define lodsWORD lodsb
@@ -118,6 +122,14 @@ exit
 %else
 	%error illegal word size WORD_SIZE
 %endif
+
+; 52 byte for ELF header, 32 byte for each program header
+%define elf_extra_align 0
+%if WORD_ALIGN == 8
+	%define elf_extra_align 4
+%endif
+%define ELF_HEADER_SIZE (52 + 1*32 + elf_extra_align)
+;mov	eax, $$ - ELF_HEADER_SIZE - ORG
 
 ; **** Macros ****
 %macro NEXT 0
@@ -158,6 +170,22 @@ exit
 			jmp	NEXT_WORD
 		%endif
 
+	%elif !WORD_TABLE && WORD_SIZE == 1
+		%if WORD_ALIGN > 1
+			;%error not working atm
+			;lea	NEXT_WORD, [WORD_ALIGN*NEXT_WORD+ASM_OFFSET]
+			xor	eax, eax
+			;mov	eax, TABLE_OFFSET
+			lodsWORD
+			;imul	eax, eax, WORD_ALIGN
+			;add	eax, TABLE_OFFSET
+			lea	eax, [eax*WORD_ALIGN+TABLE_OFFSET]
+			jmp	NEXT_WORD
+		%else
+			mov	eax, TABLE_OFFSET
+			lodsWORD
+			jmp	NEXT_WORD
+		%endif
 	%elif WORD_SMALLTABLE
 		;mov	eax, TABLE_OFFSET
 		;lodsWORD
@@ -175,7 +203,7 @@ exit
 			movzx	NEXT_WORD, word [TABLE_OFFSET + 2*NEXT_WORD + OFF]
 			add	NEXT_WORD, TABLE_OFFSET
 			jmp	NEXT_WORD
-		%elif 0
+		%elif 1
 			set	NEXT_WORD, 0
 			lodsWORD
 			%define OFF (STATIC_TABLE - $$ + ELF_HEADER_SIZE)
@@ -298,7 +326,7 @@ exit
 	%if %0 == 1
 		NEXT
 	%endif
-	align WORD_ALIGN, hlt
+	align WORD_ALIGN, nop
 	; objdump prints the lexicographical smallest label. change A to E
 	; or something to get the DEFn labels
 	A_%tok(%1):
@@ -307,7 +335,7 @@ exit
 	%define %[f_%tok(%1)] WORD %[WORD_COUNT]
 	%warning NEW DEFINITION: DEF%[WORD_COUNT] %1
 	rtaint
-	%if !WORD_SMALLTABLE && ( WORD_SIZE == 1 || WORD_TABLE )
+	%if !WORD_SMALLTABLE && WORD_TABLE
 		rset	NEXT_WORD, WORD_COUNT
 	%endif
 	%assign WORD_COUNT WORD_COUNT+1
@@ -317,6 +345,8 @@ exit
 	%if !WORD_TABLE && WORD_SIZE == 4
 		WORD_DEF DEF%1
 	%elif !WORD_TABLE && WORD_SIZE == 2
+		WORD_DEF (DEF%1 - DEF0 + ELF_HEADER_SIZE)/WORD_ALIGN
+	%elif !WORD_TABLE && WORD_SIZE == 1
 		WORD_DEF (DEF%1 - DEF0 + ELF_HEADER_SIZE)/WORD_ALIGN
 	%else
 		WORD_DEF %1
@@ -476,7 +506,8 @@ SECTION .rodata align=1 follows=.text
 SECTION .text align=1
 _start:
 
-DEF "RETURNSTACK_INIT", no_next
+;DEF "RETURNSTACK_INIT", no_next
+A_RETURNSTACK_INIT:
 rinit
 %if 0
 	;mmap	0x10000, 0xffff, PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, 0, 0
@@ -493,7 +524,8 @@ rinit
 	;xchg	esp, ebp
 %endif
 
-DEF "INIT", no_next
+;DEF "INIT", no_next
+A_INIT:
 
 %if !WORD_TABLE && WORD_SIZE == 4
 	set	FORTH_OFFSET, FORTH
@@ -502,7 +534,10 @@ DEF "INIT", no_next
 	%else
 		jmp	lastnext
 	%endif
-;%elif !WORD_TABLE && WORD_SIZE == 2
+%elif !WORD_TABLE && WORD_SIZE == 1
+	set	TABLE_OFFSET, ORG
+	set	eax, FORTH - 2
+	DOCOL
 %else
 	;shl	eax,8
 
