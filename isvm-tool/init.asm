@@ -1,6 +1,4 @@
 ; **** Assembler code ****
-_start:
-
 A_RETURNSTACK_INIT:
 rinit
 %if 0

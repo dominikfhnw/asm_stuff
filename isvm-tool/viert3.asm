@@ -119,7 +119,6 @@ exit
 	%define elf_extra_align 4
 %endif
 %define ELF_HEADER_SIZE (52 + 1*32 + elf_extra_align)
-;mov	eax, $$ - ELF_HEADER_SIZE - ORG
 
 ; **** Macros ****
 %include "macros.asm"
@@ -143,7 +142,7 @@ SECTION .rodata align=1
 	%assign	i 0
 	%rep	WORD_COUNT
 		%if WORD_SMALLTABLE
-			dw (DEF%[i] - DEF0 + ELF_HEADER_SIZE)/WORD_ALIGN
+			dw (DEF%[i] - ASM_OFFSET + ELF_HEADER_SIZE)/WORD_ALIGN
 		%else
 			%error unsupported atm
 			dd DEF%[i]
@@ -172,4 +171,6 @@ FORTH:
 ; **** Assembler code ****
 ;SECTION .text.startup align=1
 SECTION .text align=1
+_start:
+%define ASM_OFFSET _start
 %include "init.asm"
