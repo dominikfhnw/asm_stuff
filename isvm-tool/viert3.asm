@@ -62,14 +62,8 @@ exit
 %ifndef JUMPNEXT
 %define JUMPNEXT	1
 %endif
-%ifndef HARDCODE
-%define HARDCODE	0
-%endif
-%if HARDCODE ; && (!WORD_TABLE && WORD_SIZE == 2)
-	%define	TABLE_OFFSET	STATIC_TABLE
-%else
-	%define	TABLE_OFFSET	edi
-%endif
+
+%define	TABLE_OFFSET	edi
 %define	FORTH_OFFSET	esi
 %define	NEXT_WORD	eax
 
@@ -79,18 +73,14 @@ exit
 %ifndef WORD_ALIGN
 %define WORD_ALIGN	1
 %endif
-;%ifndef WORD_TABLE
-;%define WORD_TABLE	0
-;%endif
+
 %ifndef WORD_FOOBEL
 %define WORD_FOOBEL	0
 %endif
+
 %ifndef WORD_SIZE
 %define WORD_SIZE	1
 %endif
-;%ifndef WORD_SMALLTABLE
-;%define WORD_SMALLTABLE 1
-;%endif
 
 ; XXX quick&dirty hack
 %if   WORD_SIZE == 0
@@ -140,21 +130,12 @@ exit
 %endif
 
 ; **** Codeword definitions ****
+SECTION .text align=1
 %include "codewords.asm"
-
-; **** Forth code ****
-SECTION .rodata align=1 follows=.text
-A_FORTH:
-FORTH:
-	f_triple
-	;f_sc
-	;f_triple
-	;f_EXIT
-	f_exit
 
 
 ; **** Jump table ****
-SECTION .rodata align=1 follows=.text
+SECTION .rodata align=1
 %if WORD_TABLE
 	STATIC_TABLE:
 	A_STATIC_TABLE:
@@ -177,6 +158,18 @@ SECTION .rodata align=1 follows=.text
 	A_END_TABLE:
 %endif
 
+; **** Forth code ****
+SECTION .rodata align=1
+A_FORTH:
+FORTH:
+	f_triple
+	;f_sc
+	;f_triple
+	;f_EXIT
+	f_exit
+
 
 ; **** Assembler code ****
+;SECTION .text.startup align=1
+SECTION .text align=1
 %include "init.asm"

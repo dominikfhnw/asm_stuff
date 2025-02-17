@@ -4,41 +4,7 @@
 DEF "EXIT", no_next
 	rspop	FORTH_OFFSET
 
-; TODO: right place
 %define	ASM_OFFSET  DEF0
-
-;DEF "exit", no_next
-;	exit	x
-
-%if 0
-DEF "bad", no_next
-	printstr `\n?OP`
-	hlt
-	;EXECUTE2 reg, exit
-%endif
-
-%if 0
-DEF "sleep"
-	sleep 1
-DEF "rwx"
-	rwx
-DEF "pause"
-	pause
-%endif
-%if 0
-DEF "reg"
-	; TODO: this is a mess
-	%if 0
-		%xdefine OLD_DEBUG DEBUG	
-		%xdefine DEBUG 0
-		%include "regdump2.mac"
-		%xdefine DEBUG OLD_DEBUG
-		%xdefine IP 0
-		regdump_func
-	%else
-		;hlt
-	%endif
-%endif
 
 DEF "lit8"
 	xor	eax, eax
