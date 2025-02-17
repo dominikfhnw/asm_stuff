@@ -134,8 +134,7 @@ exit
 ; **** Macros ****
 %macro NEXT 0
 	%if JUMPNEXT
-		;jmp short lastnext
-		ret
+		jmp short lastnext
 	%else
 		realNEXT
 	%endif
