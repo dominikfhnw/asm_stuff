@@ -19,7 +19,7 @@
 %define EXTENDED 0
 %define FLAGS 0
 %define IP 1
-%define	STACK 0
+%define	STACK 3
 
 %define LABEL 2
 %define ALTLABEL 0
@@ -28,29 +28,6 @@
 ;  AX  CX  DX  BX  SP  BP  SI  DI  FL
 ;  A   C   D   B   S   P   s   d   f
 ;hlt
-
-%if DEBUG
-
-%define REG_OPT 1
-%define reg_stack 1
-%define reg_keepflags 0
-
-%if ZEROES
-times 8 db 0
-%endif
-
-regdump:
-regdump_func
-ret
-
-%if SEPARATE_STACK
-section .bss
-	regdump_stack_bottom:
-	resb TOTAL+48
-	regdump_stack_top:
-	regdump_esp:	resd 1
-%endif
-%endif
 
 %macro regdump_func 0
 %if LABEL || ALTLABEL
@@ -280,4 +257,30 @@ popa
 %endif
 rtaint ;popa destroys all our assumptions
 %endmacro
+
+; *********************************************************
+
+%if DEBUG
+
+%define REG_OPT 1
+%define reg_stack 1
+%define reg_keepflags 0
+
+%if ZEROES
+times 8 db 0
+%endif
+
+regdump:
+regdump_func
+ret
+
+%if SEPARATE_STACK
+section .bss
+	regdump_stack_bottom:
+	resb TOTAL+48
+	regdump_stack_top:
+	regdump_esp:	resd 1
+%endif
+%endif
+
 
