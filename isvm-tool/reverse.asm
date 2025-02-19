@@ -41,8 +41,9 @@ exit
 
 %endif
 
+%define REG_SIMPLE	0
 %define REG_OPT		1
-%define REG_SEARCH	1
+%define REG_SEARCH	0
 %define REG_ASSERT	0
 %define LINCOM		0
 

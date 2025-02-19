@@ -1,5 +1,6 @@
 ; **** Assembler code ****
-A_RETURNSTACK_INIT:
+A_INIT:
+;A_RETURNSTACK_INIT:
 rinit
 %if 0
 	;mmap	0x10000, 0xffff, PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, 0, 0
@@ -15,14 +16,13 @@ rinit
 	;xchg	esp, ebp
 %endif
 
-A_INIT:
 
 %if !WORD_TABLE && WORD_SIZE == 4
 	set	FORTH_OFFSET, FORTH
 	%if WORD_FOOBEL
 		jmp	[FORTH_OFFSET]
 	%else
-		jmp	lastnext
+		jmp	A_NEXT
 	%endif
 %elif 0 && !WORD_TABLE && WORD_SIZE == 1
 	rset	TABLE_OFFSET, 0
@@ -31,7 +31,7 @@ A_INIT:
 	;set	eax, FORTH - 2
 	mov	eax, TABLE_OFFSET
 	mov	al, OFF
-	DOCOL
+	;DOCOL
 %else
 
 	; this is slightly confusing, as we're misusing the TABLE_OFFSET
@@ -49,7 +49,7 @@ A_INIT:
 	%endif
 
 	;lea	eax, [TABLE_OFFSET  + OFF]
-	DOCOL
+	;DOCOL
 %endif
 
 

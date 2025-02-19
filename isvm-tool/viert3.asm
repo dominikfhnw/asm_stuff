@@ -4,7 +4,7 @@ set -euo pipefail
 
 ORG="0x01000000"
 OUT=viert
-NASMOPT="-DORG=$ORG -Werror=label-orphan"
+NASMOPT="-DORG=$ORG -Werror=label-orphan -Werror=number-overflow"
 if [ -n "${LINCOM-}" ]; then
 	OUT="$OUT.com"
 	NASMOPT="-DLINCOM=1"
@@ -33,7 +33,8 @@ DUMP="-Mintel"
 if [ -n "${FULL-1}" ]; then
 	DUMP="$DUMP -j .text -j .rodata"
 	time objdump $DUMP -d $OUT.full
-	time nm -td -n $OUT.full | mawk '/. A_/{sub(/A_/,"");if(name){print $1-size " " name};name=$3;size=$1}'|column -tR1 | sort -nr
+	#time nm -td -n $OUT.full | mawk '/. A_/{sub(/A_/,"");if(name){print $1-size " " name};name=$3;size=$1}'|column -tR1 | sort -nr
+	time nm -td -n $OUT.full | mawk '/. A_/{sub(/A_/,"");if(name){print $1-size " " name};name=$3;size=$1}'|column -tR1 
 else
 	#OFF=$(  readelf2 -lW $OUT 2>/dev/null | awk '$2=="0x000000"{print $3}')
 	OFF="0x10000"
@@ -134,7 +135,7 @@ SECTION .text align=1
 
 
 ; **** Jump table ****
-SECTION .rodata align=1
+SECTION .rodata align=1 
 %if WORD_TABLE
 	STATIC_TABLE:
 	A_STATIC_TABLE:
@@ -158,10 +159,23 @@ SECTION .rodata align=1
 %endif
 
 ; **** Forth code ****
-SECTION .rodata align=1
+SECTION .rodata align=1 WORD_TYPE
 A_FORTH:
 FORTH:
-	f_triple
+	;f_heya
+	;f_puts
+	;db 8
+	;f_heya
+	f_asmret
+	db .endasm - $ - 1
+	pop	eax
+	push	12
+	push	eax
+	ret
+	.endasm:
+	;f_asm
+	;reg
+	;f_puts
 	;f_sc
 	;f_triple
 	;f_EXIT
@@ -174,3 +188,8 @@ SECTION .text align=1
 _start:
 %define ASM_OFFSET _start
 %include "init.asm"
+
+%if DEBUG
+A_regdump:
+%include "regdump2.mac"
+%endif

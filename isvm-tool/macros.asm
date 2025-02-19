@@ -1,7 +1,7 @@
 ; **** Macros ****
-%macro NEXT 0
+%macro NEXT arg(0)
 	%if JUMPNEXT
-		jmp short lastnext
+		jmp short A_NEXT
 	%else
 		realNEXT
 	%endif
@@ -196,8 +196,8 @@
 	align WORD_ALIGN, nop
 	; objdump prints the lexicographical smallest label. change A to E
 	; or something to get the DEFn labels
-	A_%tok(%1):
 	DEF%[WORD_COUNT]:
+	A_%tok(%1):
 	%define %[n_%tok(%1)] %[WORD_COUNT]
 	%define %[f_%tok(%1)] WORD %[WORD_COUNT]
 	%warning NEW DEFINITION: DEF%[WORD_COUNT] %1
@@ -247,18 +247,18 @@
 	DIRECT_EXECUTE	%1
 %endmacro
 
-%macro DOCOL 0
+%macro DOCOL arg(0)
 	DIRECT_EXECUTE DOCOL
 	%%forth:
 %endmacro
 
-%imacro rspop 1
+%imacro rspop arg(1)
 	xchg	ebp, esp
 	pop	%1
 	xchg	ebp, esp
 %endmacro
 
-%imacro rspush 1
+%imacro rspush arg(1)
 	xchg	ebp, esp
 	push	%1
 	xchg	ebp, esp
@@ -273,3 +273,9 @@
 		dd %1
 	%endif
 %endmacro
+
+%define offset(a)	(a - $$ + ELF_HEADER_SIZE)
+%macro off2 1
+	(%1 - $$ + ELF_HEADER_SIZE)
+%endmacro
+
