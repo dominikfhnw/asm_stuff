@@ -1,16 +1,22 @@
 #for i in $(seq 0 255);do printf -v x "%x" $i;echo "** $x";printf "\x$x\x20\x00\x01\x00" |ndisasm -u -;done
 
-#for i in $(seq 0 16 255);do
-for i in $(seq 0 127);do
+for i in $(seq 0 16 255);do
+for j in $(seq 0 255);do
+#for j in $(seq 0 15);do
 #for i in $(seq 32 127);do
 	printf -v x "%x" $i
+	printf -v y "%x" $j
 
 	#out=$(printf "\x26\x21\x$x\x90\x90\x90\x90\x90\x90\x90" |ndisasm -u -)
 	#out=$(printf "\x$x\x20\x00\x01\x00\xc0" |ndisasm -u -)
 	#out=$(printf "\xc8\x20\x00\x01\x00\x$x" |ndisasm -u -)
 	#out=$(printf "\x$x\x20\x00\x01\x00" |ndisasm -u -)
 	#out=$(printf "\x00\x$x" |ndisasm -u -)
-	out=$(printf "\x$x\x04\x00\x00\x00" |ndisasm -u -)
+	#out=$(printf "\x$x\x04\x00\x00\x00" |ndisasm -u -)
+	#out=$(printf "\x$x\x$y\x00\x00\x90\x90\x90\x90" |ndisasm -u -)
+	#out=$(printf "\x$x\x$y\x00\x00" |ndisasm -u -)
+	#out=$(printf "\x$x\x02\x00\x03\x00\x0F\x90" |ndisasm -u -)
+	out=$(printf "\x00\x$x\x$y\x90" |ndisasm -u -)
 	#out=$(printf "\x$x" |ndisasm -u -)
 	#out=$(printf "\x$x\xae\x90\x90\x90\x90" |ndisasm -u -)
 	#out=$(printf "\x$x\xc1\xeb\x04" |ndisasm -u -)
@@ -23,12 +29,13 @@ for i in $(seq 0 127);do
 	*db\ 0x00*)
 	#*shr*)
 		:;;
-	#*db\ 0x*)
-	#	:
-	#	;;
-	*\ \[eax\],*)
+	*db\ 0x*)
+		:
+		;;
+	#*\ \[eax\],*)
 	#*and*\[eax\],*)
-	#x*\],*)
+	#*\],*)
+	*\]*)
 		: echo bork
 		;;
 	*)
@@ -36,5 +43,6 @@ for i in $(seq 0 127);do
 		echo "$out"
 		;;
 	esac
-done 
+done
+done
 
