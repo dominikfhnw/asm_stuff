@@ -4,12 +4,19 @@ BEGIN {
 	*DEBUG = sub(){ $d };
 }
 
-#use v5.34;
-#no warnings qw( experimental::smartmatch );
 sub say{local$\="\n";print@_}
 
 my $REPLACE = 1;
-if($ARGV[0] eq "-n"){
+if($ARGV[0] eq "-h"){
+	say <<EOF;
+$0 [-n] file
+	Create a shell script fragment that will recreate the input file.
+	Non-printable characters are properly escaped.
+
+	-n: do not replace frequent substitutions with shorter sequences
+EOF
+	exit;
+}elsif($ARGV[0] eq "-n"){
 	shift @ARGV;
 	say "NOREPLACE";
 	$REPLACE = 0;
@@ -39,6 +46,7 @@ sub esc {
 	my $next = shift;
 
 	if($next =~ /[0-7]/){
+		dbg "Next char is octal ($in, $next)";
 		return sprintf "\\%03o",$in;
 	}
 	else{
@@ -125,6 +133,16 @@ for(A..Z){
 }
 
 for(a..z){
+	$_ = ord;
+	if($freq{$_} == 0){
+		dbg "$_ ",esc2($_),": ",$freq{$_} || 0;
+		push @unused, $_;
+		$i++;
+		#last if $i > 10;
+	}
+}
+
+for(8..9){
 	$_ = ord;
 	if($freq{$_} == 0){
 		dbg "$_ ",esc2($_),": ",$freq{$_} || 0;
